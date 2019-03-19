@@ -49,6 +49,8 @@ def check_mbox(config, prog, argv):
                         action='store_true', help='Also dump detected patches')
     parser.add_argument('-l', dest='lookup', default=False, action='store_true',
                         help='Perform a simple lookup')
+    parser.add_argument('-rd', dest='respect_date', default=False,
+                        action='store_true', help='Respect author date')
     parser.add_argument('range', type=str, nargs=1, help='Revision range')
 
     args = parser.parse_args(argv)
@@ -68,6 +70,7 @@ def check_mbox(config, prog, argv):
     not_found = []
 
     log.info('Processing %s' % args.range[0])
+    date_selector = get_date_selector(repo, None, 'AD')
 
     for commit_hash in range:
         commit = repo[commit_hash]
@@ -76,12 +79,22 @@ def check_mbox(config, prog, argv):
         if commit.is_merge_commit:
             continue
 
-        if commit_hash in patch_groups:
-            mails = patch_groups.get_untagged(commit_hash)
-            if len(mails):
-                found.append(commit_hash)
-            else:
-                not_found.append(commit_hash)
+        if commit_hash not in patch_groups:
+            not_found.append(commit_hash)
+            continue
+
+        mails = patch_groups.get_untagged(commit_hash)
+        if len(mails) == 0:
+            not_found.append(commit_hash)
+            continue
+
+        if not args.respect_date:
+            found.append(commit_hash)
+            continue
+
+        # We have to respect the author date in order to filter out backports.
+        if PatchComposition.is_forwardport(repo, patch_groups, date_selector, commit_hash):
+            found.append(commit_hash)
         else:
             not_found.append(commit_hash)
 

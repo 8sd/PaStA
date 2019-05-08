@@ -204,8 +204,8 @@ class Config:
             mbox_pub_in = mbox['pubin']
 
             # mailbox parameters
-            self.mbox_mindate = parse_date_ymd(mbox['MBOX_MINDATE'])
-            self.mbox_maxdate = parse_date_ymd(mbox['MBOX_MAXDATE'])
+            self.mbox_mindate = parse_date_ymd(mbox['MINDATE'])
+            self.mbox_maxdate = parse_date_ymd(mbox['MAXDATE'])
             try:
                 self.time_frame = parse_date_ymd(mbox['TIME_FRAME'])
             except KeyError as e:

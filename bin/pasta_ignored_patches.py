@@ -15,6 +15,14 @@ from logging import getLogger
 
 log = getLogger(__name__[-15:])
 
+
+def get_author_of_msg (msg, repo):
+    try:
+        return repo[msg].author
+    except:
+        return None
+
+
 def get_relevant_subthread(thread, msg):
     subthreads = thread.children
     for subthread in subthreads:
@@ -30,12 +38,12 @@ def patch_has_no_response(thread):
     return len(thread.children) == 0
 
 
-def patch_was_only_answered_by_author (thread, author, mbox):
+def patch_was_only_answered_by_author (thread, author, mbox, repo):
     for subthread in thread.children:
         msg = mbox.get_messages(subthread.name)
-        if msg.author != author:
+        if get_author_of_msg(author, repo) is not author and get_author_of_msg(author, repo) is not None:
             return False
-        if not patch_was_only_answered_by_author(subthread, author, mbox):
+        if not patch_was_only_answered_by_author(subthread, author, mbox, repo):
             return False
     return True
 
@@ -48,11 +56,12 @@ def ignored_patches(config, prog, argv):
     found = list()
     mbox = Mbox(config)
     threads = mbox.load_threads()
+    repo = config.repo
 
     # Load patches
     cluster = Cluster.from_file("resources/linux/resources/mbox-result")
     cluster.optimize()
-    patches = cluster.get_untagged () # Load all patches without commit hash
+    patches = cluster.get_untagged()# Load all patches without commit hash
     # Iterate patches
     for patch in patches:
         if patch is None:
@@ -63,16 +72,16 @@ def ignored_patches(config, prog, argv):
         thread = threads.get_thread(patch) # Return AnyTree of thread, containing the relevant msg
         relevant_subthread = get_relevant_subthread(thread, patch) # Extract relevant subtree from tree
         if relevant_subthread is None:
-            log.warning('No subthread for ' + patch + 'found!')
+            log.warning('No subthread for ' + patch + ' found!')
             continue
         if patch_has_no_response(relevant_subthread):
             found.append(patch)
             continue
 
-#       msg = mbox.get_messages(patch)
-#       if patch_was_only_answered_by_author(relevant_subthread, msg.author, mbox):
-#            found.append(patch)
-#            continue
+        author = get_author_of_msg (patch, repo)
+        if patch_was_only_answered_by_author(relevant_subthread, author, mbox, repo):
+            found.append(patch)
+            continue
 
     log.info ('  ↪ done')
     # Write to file

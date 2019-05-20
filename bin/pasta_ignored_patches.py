@@ -53,15 +53,17 @@ def ignored_patches(config, prog, argv):
         log.error('Only works in Mbox mode!')
         return -1
 
-    found = list()
+    found = set()
     mbox = Mbox(config)
     threads = mbox.load_threads()
     repo = config.repo
 
     # Load patches
+    log.info('Loading Patches…')
     cluster = Cluster.from_file("resources/linux/resources/mbox-result")
     cluster.optimize()
     patches = cluster.get_untagged()# Load all patches without commit hash
+    log.info('  ↪ ' + str(len(patches)) + 'patches found')
     # Iterate patches
     for patch in patches:
         if patch is None:
@@ -75,15 +77,17 @@ def ignored_patches(config, prog, argv):
             log.warning('No subthread for ' + patch + ' found!')
             continue
         if patch_has_no_response(relevant_subthread):
-            found.append(patch)
+            found.add(patch)
             continue
 
         author = get_author_of_msg (patch, repo)
         if patch_was_only_answered_by_author(relevant_subthread, author, mbox, repo):
-            found.append(patch)
+            found.add(patch)
             continue
 
     log.info ('  ↪ done')
     # Write to file
     print(len(found))
-
+    for f in found:
+        print (f)
+    print(len(found))

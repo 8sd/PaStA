@@ -64,7 +64,10 @@ class PatchMail(MessageDiff):
         if date.tzinfo is None:
             date = date.replace(tzinfo=datetime.timezone.utc)
 
+        self.date = date
+
         author_name = mail['From']
+        self.author_name = author_name
         author_email = ''
         match = MAIL_FROM_REGEX.match(author_name)
         if match:
@@ -438,6 +441,7 @@ class Mbox:
                 patch = PatchMail(message)
                 return patch
             except Exception as e:
+                print('Failed')
                 exception = e
 
         raise exception

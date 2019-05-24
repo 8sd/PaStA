@@ -203,6 +203,11 @@ class Config:
             # mailbox parameters
             self.mbox_mindate = parse_date_ymd(mbox['MBOX_MINDATE'])
             self.mbox_maxdate = parse_date_ymd(mbox['MBOX_MAXDATE'])
+            try:
+                self.time_frame = parse_date_ymd(mbox['TIME_FRAME'])
+            except KeyError as e:
+                log.warning('Timeframe not defined in config')
+                self.time_frame = None
 
             self.mbox_raw = list()
             for listname, f_mbox_raw in mbox_raw.items():

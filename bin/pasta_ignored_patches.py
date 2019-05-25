@@ -43,7 +43,8 @@ def patch_was_only_answered_by_author (thread, author, repo):
     mbox = repo.mbox
     for subthread in thread.children:
         msg = mbox.get_messages(subthread.name)
-        if get_author_of_msg(author, repo) is not author and get_author_of_msg(author, repo) is not None:
+        if get_author_of_msg(author, repo) is not author and \
+                get_author_of_msg(author, repo) is not None:
             return False
         if not patch_was_only_answered_by_author(subthread, author, repo):
             return False

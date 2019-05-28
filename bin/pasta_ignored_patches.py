@@ -18,10 +18,12 @@ log = getLogger(__name__[-15:])
 
 
 def get_author_of_msg (msg, repo):
+    author = None
     try:
-        return repo[msg].author
+        author = repo[msg].author
     except:
         return None
+    return author.name + ' ' + author.email
 
 
 def get_relevant_subthread(thread, msg):
@@ -77,18 +79,31 @@ def ignored_patches(config, prog, argv):
     notInTimeframe = set()
     responseByOther = set()
     oldest = datetime.datetime.now()
+    error = 0
+    noResponse = 0
+
 
     # Iterate patches
     for patch in patches:
         if patch is None:
             log.info()
+            error += 1
             continue
         log.info ('Checking patch ' + patch)
+        patchmail = None
 
-        if oldest.replace(tzinfo=None) > repo[patch].date.replace(tzinfo=None):
+        try:
+            patchmail = repo[patch]
+        except KeyError as e:
+            log.warning('Patch ' + patch + 'could not be analyzed')
+            log.warnung(e)
+            error += 1
+            continue
+
+        if oldest.replace(tzinfo=None) > patchmail.date.replace(tzinfo=None):
             oldest = repo[patch].date
 
-        if repo[patch].date.replace(tzinfo=None) > config.time_frame.replace(tzinfo=None):
+        if patchmail.date.replace(tzinfo=None) > config.time_frame.replace(tzinfo=None):
             notInTimeframe.add(patch)
             log.info (repo[patch].date)
             continue
@@ -98,24 +113,29 @@ def ignored_patches(config, prog, argv):
         relevant_subthread = get_relevant_subthread(thread, patch) # Extract relevant subtree from tree
         if relevant_subthread is None:
             log.warning('No subthread for ' + patch + ' found!')
+            error += 1
             continue
         if patch_has_no_response(relevant_subthread):
             found.add(patch)
+            noResponse += 1
             continue
 
         author = get_author_of_msg(patch, repo)
-        print(author)
         if patch_was_only_answered_by_author(relevant_subthread, author, repo):
             found.add(patch)
             continue
-        responseByOther(patch)
+        responseByOther.add(patch)
 
     log.info ('  ↪ done')
     # Write to file
 
     for f in found:
         print (f)
-    print("ignored: " + str(len(found)))
-    print("not in timeframe: " + str(len(notInTimeframe)))
-    print("Have answer: " + str(len(found)))
-    print("oldest patch is from: " + str (oldest))
+    print("Some stats:")
+    print("→ analyzed: " + str(len(patches)))
+    print("→ ignored: " + str(len(found)))
+    print("→ single mails: " + str(noResponse))
+    print("→ not in timeframe: " + str(len(notInTimeframe)))
+    print("→ have foreign answer: " + str(len(responseByOther)))
+    print("→ oldest patch is from: " + str (oldest))
+    print("→ errors during analysis: " + str(error))

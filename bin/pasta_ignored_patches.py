@@ -72,7 +72,19 @@ def ignored_patches(config, prog, argv):
     threads = repo.mbox.load_threads()
 
     cluster.optimize()
-    patches = cluster.get_untagged()# Load all patches without commit hash
+    clusterKeys = cluster.get_keys()
+    overloadedCluster = 0
+    patches = set ()
+    for clusterKey in clusterKeys:
+        tmpCluster = cluster.get_cluster(clusterKey)
+        if len(tmpCluster) == 1:
+            for patch in cluster.get_untagged(clusterKey):
+                patches.add(patch)
+        else:
+            log.info("Ignore Cluster of Key " + clusterKey + "due to multiple contained mails")
+            overloadedCluster += 1
+
+    #patches = cluster.get_untagged()# Load all patches without commit hash
     log.info('  ↪ ' + str(len(patches)) + ' patches found')
 
     found = set()
@@ -90,7 +102,6 @@ def ignored_patches(config, prog, argv):
             error += 1
             continue
         log.info ('Checking patch ' + patch)
-        patchmail = None
 
         try:
             patchmail = repo[patch]
@@ -132,6 +143,7 @@ def ignored_patches(config, prog, argv):
     for f in found:
         print (f)
     print("Some stats:")
+    print("→ cluster overflow: " + str(overloadedCluster))
     print("→ analyzed: " + str(len(patches)))
     print("→ ignored: " + str(len(found)))
     print("→ single mails: " + str(noResponse))

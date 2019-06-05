@@ -31,14 +31,16 @@ _threads = None
 
 
 def print_statistic():
+    log = getLogger('Statistics')
     for key, value in _statistic.items():
         if type(value) is str:
-            print(str(key) + ': ' + value)
-        if type(value) is set:
-            print(str(key) + ': ' + str(len(value)))
-        if type(value) is dict:
-            print(str(key) + ': ' + str(len(value)))
-        print(str(key) + ': ' + str(value))
+            log.info(str(key) + ': ' + value)
+        elif type(value) is set:
+            log.info(str(key) + ': ' + str(len(value)))
+        elif type(value) is dict:
+            log.info(str(key) + ': ' + str(len(value)))
+        else:
+            log.info(str(key) + ': ' + str(value))
 
 
 def analyze_patch_set():
@@ -109,19 +111,20 @@ def analyze_patch(patch, patches, ignore_versions=False, ignore_patch_set=False)
     if (not ignore_versions) and has_patch_versions(patch):
         return  # TODO: Analyze all versions
     if (not ignore_patch_set) and is_part_of_patch_set(patch):
+        _statistic['patch set'].add(patch)
         return  # TODO: Analyze all patches of patch set
     # TODO: Handle version and patch set cases
     is_single_patch_ignored(patch)
 
 
 def ignored_patches(config, prog, argv):
+    global _log
     if config.mode != config.Mode.MBOX:
         _log.error('Only works in Mbox mode!')
         return -1
 
     global _config
     global _repo
-    global _log
     global _statistic
     global _patches
     global _threads

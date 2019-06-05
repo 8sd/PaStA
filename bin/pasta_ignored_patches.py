@@ -10,13 +10,21 @@ This work is licensed under the terms of the GNU GPL, version 2. See
 the COPYING file in the top-level directory.
 """
 
+import re
+
 from logging import getLogger
 from anytree import LevelOrderIter
 
 _config = None
 _log = getLogger(__name__[-15:])
 _repo = None
-_statistic = {'too_old': set(), 'ignored': set(), 'error': set(), 'foreign response': set()}
+_statistic = {
+    'too old': set(),
+    'ignored': set(),
+    'error': set(),
+    'foreign response': set(),
+    'patch set': set()
+}
 _patches = None
 _threads = None
 
@@ -36,11 +44,18 @@ def analyze_patch_set():
     return  # TODO iterate over all patches from patch set
 
 
-def is_part_of_patch_set():
-    return False  # TODO check if patch is part of patch set
+def is_part_of_patch_set(patch):
+    try:
+        subject = _repo[patch].mail_subject
+    except KeyError:
+        return False
+    if type(re.search(r'[0-9]+\/[0-9]+\]', subject)) is type(None):
+        return False
+    return True
+    # TODO check if patch is part of patch set
 
 
-def has_patch_versions():
+def has_versions(patch):
     return False  # TODO check if entity (patch, patch set) has versions
 
 

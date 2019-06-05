@@ -95,9 +95,12 @@ def is_single_patch_ignored(patch):
         patch_mail = _repo[patch]
     except KeyError:
         _statistic['error'].add(patch)
+        return None
 
     if _config.time_frame < patch_mail.date.replace(tzinfo=None):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
+        return None
+
     if patch_has_response(patch):
         if patch_has_foreign_response(patch):
             _statistic['foreign response'].add(patch)
@@ -108,7 +111,7 @@ def is_single_patch_ignored(patch):
 
 
 def analyze_patch(patch, patches, ignore_versions=False, ignore_patch_set=False):
-    if (not ignore_versions) and has_patch_versions(patch):
+    if (not ignore_versions) and has_versions(patch):
         return  # TODO: Analyze all versions
     if (not ignore_patch_set) and is_part_of_patch_set(patch):
         _statistic['patch set'].add(patch)

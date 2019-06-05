@@ -14,6 +14,7 @@ import re
 
 from logging import getLogger
 from anytree import LevelOrderIter
+from tqdm import tqdm
 
 _config = None
 _log = getLogger(__name__[-15:])
@@ -139,7 +140,8 @@ def ignored_patches(config, prog, argv):
 
     _threads = _repo.mbox.load_threads()
 
-    for patch in _patches:
+    _log.info("Analyzing patches…")
+    for patch in tqdm(_patches):
         analyze_patch(patch, _patches)
 
     print_statistic()

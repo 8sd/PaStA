@@ -10,144 +10,123 @@ This work is licensed under the terms of the GNU GPL, version 2. See
 the COPYING file in the top-level directory.
 """
 
-from pypasta import *
 from logging import getLogger
-import datetime
+from anytree import LevelOrderIter
 
-log = getLogger(__name__[-15:])
+_config = None
+_log = getLogger(__name__[-15:])
+_repo = None
+_statistic = {'too_old': set(), 'ignored': set(), 'error': set(), 'foreign response': set()}
+_patches = None
+_threads = None
 
 
-def get_author_of_msg (msg, repo):
-    author = None
+def print_statistic():
+    for key, value in _statistic.items():
+        if type(value) is str:
+            print(str(key) + ': ' + value)
+        if type(value) is set:
+            print(str(key) + ': ' + str(len(value)))
+        if type(value) is dict:
+            print(str(key) + ': ' + str(len(value)))
+        print(str(key) + ': ' + str(value))
+
+
+def analyze_patch_set():
+    return  # TODO iterate over all patches from patch set
+
+
+def is_part_of_patch_set():
+    return False  # TODO check if patch is part of patch set
+
+
+def has_patch_versions():
+    return False  # TODO check if entity (patch, patch set) has versions
+
+
+def get_author_of_msg (msg):
     try:
-        author = repo[msg].author
-    except:
+        author = _repo[msg].author
+    except KeyError:
         return None
     return author.name + ' ' + author.email
 
 
-def get_relevant_subthread(thread, msg):
-    subthreads = thread.children
-    for subthread in subthreads:
-        if subthread.name == msg:
-            return subthread
-        res = get_relevant_subthread(subthread, msg)
-        if res is not None:
-            return res
-    return None
+def patch_has_foreign_response(patch):
+    try:
+        author = get_author_of_msg(patch)
+    except KeyError:
+        _statistic['error'] = patch
+        return False
+
+    for mail in list(LevelOrderIter(_threads.get_thread(patch))):
+        try:
+            if not get_author_of_msg(mail) is author:
+                return True
+        except KeyError:
+            _statistic['error'].add(mail)
+    return False
 
 
-def patch_has_no_response(thread):
-    return len(thread.children) == 0
+def patch_has_response(patch):
+    return len(_threads.get_thread(patch).children) == 0
 
 
-def patch_was_only_answered_by_author (thread, author, repo):
-    mbox = repo.mbox
-    for subthread in thread.children:
-        msg = mbox.get_messages(subthread.name)
-        if get_author_of_msg(author, repo) is not author and \
-                get_author_of_msg(author, repo) is not None:
-            return False
-        if not patch_was_only_answered_by_author(subthread, author, repo):
-            return False
-    return True
+def is_single_patch_ignored(patch):
+    try:
+        patch_mail = _repo[patch]
+    except KeyError:
+        _statistic['error'].add(patch)
+
+    if _config.time_frame < patch_mail.date.replace(tzinfo=None):
+        _statistic['too old'].add(patch)  # Patch is too new to be analyzed
+    if patch_has_response(patch):
+        if patch_has_foreign_response(patch):
+            _statistic['foreign response'].add(patch)
+        else:
+            _statistic['ignored'].add(patch)
+    else:
+        _statistic['ignored'].add(patch)
+
+
+def analyze_patch(patch, patches, ignore_versions=False, ignore_patch_set=False):
+    if (not ignore_versions) and has_patch_versions(patch):
+        return  # TODO: Analyze all versions
+    if (not ignore_patch_set) and is_part_of_patch_set(patch):
+        return  # TODO: Analyze all patches of patch set
+    # TODO: Handle version and patch set cases
+    is_single_patch_ignored(patch)
 
 
 def ignored_patches(config, prog, argv):
     if config.mode != config.Mode.MBOX:
-        log.error('Only works in Mbox mode!')
+        _log.error('Only works in Mbox mode!')
         return -1
 
-    # print(config.time_frame)
+    global _config
+    global _repo
+    global _log
+    global _statistic
+    global _patches
+    global _threads
 
-    # wird alles von load_patch_groups erledigt
-    repo = config.repo
+    config.time_frame = config.time_frame.replace(tzinfo=None)
+    _config = config
 
-    # Load patches
-    log.info('Loading Patches…')
-    #cluster = Cluster.from_file("resources/linux/resources/mbox-result")
+    _repo = config.repo
     f_cluster, cluster = config.load_patch_groups(must_exist=True)
-    print(f_cluster)
-
-    threads = repo.mbox.load_threads()
-
     cluster.optimize()
-    clusterKeys = cluster.get_keys()
-    overloadedCluster = 0
-    patches = set ()
-    for clusterKey in clusterKeys:
-        tmpCluster = cluster.get_cluster(clusterKey)
-        if len(tmpCluster) == 1:
-            for patch in cluster.get_untagged(clusterKey):
-                patches.add(patch)
-        else:
-            log.info("Ignore Cluster of Key " + clusterKey + "due to multiple contained mails")
-            overloadedCluster += 1
 
-    #patches = cluster.get_untagged()# Load all patches without commit hash
-    log.info('  ↪ ' + str(len(patches)) + ' patches found')
+    _statistic['all patches'] = cluster.get_tagged() | cluster.get_untagged()
+    _statistic['upstream patches'] = cluster.get_tagged()
 
-    found = set()
-    notInTimeframe = set()
-    responseByOther = set()
-    oldest = datetime.datetime.now()
-    error = 0
-    noResponse = 0
+    _patches = cluster.get_untagged()
 
+    _threads = _repo.mbox.load_threads()
 
-    # Iterate patches
-    for patch in patches:
-        if patch is None:
-            log.info()
-            error += 1
-            continue
-        log.info ('Checking patch ' + patch)
+    for patch in _patches:
+        analyze_patch(patch, _patches)
 
-        try:
-            patchmail = repo[patch]
-        except KeyError as e:
-            log.warning('Patch ' + patch + 'could not be analyzed')
-            log.warnung(e)
-            error += 1
-            continue
+    print_statistic()
 
-        if oldest.replace(tzinfo=None) > patchmail.date.replace(tzinfo=None):
-            oldest = repo[patch].date
-
-        if patchmail.date.replace(tzinfo=None) > config.time_frame.replace(tzinfo=None):
-            notInTimeframe.add(patch)
-            log.info (repo[patch].date)
-            continue
-
-        # check if patch has mail
-        thread = threads.get_thread(patch) # Return AnyTree of thread, containing the relevant msg
-        relevant_subthread = get_relevant_subthread(thread, patch) # Extract relevant subtree from tree
-        if relevant_subthread is None:
-            log.warning('No subthread for ' + patch + ' found!')
-            error += 1
-            continue
-        if patch_has_no_response(relevant_subthread):
-            found.add(patch)
-            noResponse += 1
-            continue
-
-        author = get_author_of_msg(patch, repo)
-        if patch_was_only_answered_by_author(relevant_subthread, author, repo):
-            found.add(patch)
-            continue
-        responseByOther.add(patch)
-
-    log.info ('  ↪ done')
-    # Write to file
-
-    for f in found:
-        print (f)
-    print("Some stats:")
-    print("→ cluster overflow: " + str(overloadedCluster))
-    print("→ analyzed: " + str(len(patches)))
-    print("→ ignored: " + str(len(found)))
-    print("→ single mails: " + str(noResponse))
-    print("→ not in timeframe: " + str(len(notInTimeframe)))
-    print("→ have foreign answer: " + str(len(responseByOther)))
-    print("→ oldest patch is from: " + str (oldest))
-    print("→ errors during analysis: " + str(error))
+    return True

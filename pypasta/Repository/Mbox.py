@@ -414,7 +414,6 @@ class Mbox:
                 patch = PatchMail(message)
                 return patch
             except Exception as e:
-                print('Failed')
                 exception = e
 
         raise exception

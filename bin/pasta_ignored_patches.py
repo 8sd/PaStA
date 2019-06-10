@@ -137,12 +137,28 @@ def is_single_patch_ignored(patch):
     _statistic['ignored'].add(patch)
 
 
+def get_patchset_of_patch(patch):
+    return None
+
+
+def get_versions_of_patch(patch):
+    return None
+
+
 def analyze_patch(patch, ignore_versions=False, ignore_patch_set=False):
     if (not ignore_versions) and has_versions(patch):
-        return  # TODO: Analyze all versions
+        patches = get_versions_of_patch(patch)
+        for patch in patches:
+            analyze_patch(patch, True)
+        _patches -= patches
+        return
     if (not ignore_patch_set) and is_part_of_patch_set(patch):
         _statistic['patch set'].add(patch)
-        return  # TODO: Analyze all patches of patch set
+        patches = get_patchset_of_patch(patch)
+        for patch in patches:
+            analyze_patch(patch, True, True)
+        _patches -= patches
+        return
     # TODO: Handle version and patch set cases
     is_single_patch_ignored(patch)
 

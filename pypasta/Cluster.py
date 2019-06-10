@@ -274,6 +274,9 @@ class Cluster:
         with open(filename, 'w') as f:
             f.write(str(self))
 
+    def get_key_of_element(self, elem):
+        return self.lookup[elem]
+
     @staticmethod
     def from_file(filename, must_exist=False):
         def split_elements(elems):

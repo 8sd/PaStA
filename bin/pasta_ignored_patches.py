@@ -11,6 +11,7 @@ the COPYING file in the top-level directory.
 """
 
 import re
+import datetime
 
 from logging import getLogger
 from anytree import LevelOrderIter
@@ -19,28 +20,53 @@ from tqdm import tqdm
 _config = None
 _log = getLogger(__name__[-15:])
 _repo = None
+_clusters = None
 _statistic = {
     'too old': set(),
     'ignored': set(),
     'error': set(),
     'foreign response': set(),
-    'patch set': set()
+    'patch set': set(),
+    'large cluster': set(),
+    'similar patch': set()
 }
 _patches = None
 _threads = None
 
 
-def print_statistic():
+def write_and_print_statistic():
     log = getLogger('Statistics')
     for key, value in _statistic.items():
+        file_name = (datetime.datetime.now().strftime('%Y.%m.%d-%H:%M_') + str(key) + ".out").replace(' ', '_')
         if type(value) is str:
             log.info(str(key) + ': ' + value)
         elif type(value) is set:
             log.info(str(key) + ': ' + str(len(value)))
+            if len(value) < 100000:
+                f = open(file_name, 'w')
+                for i in value:
+                    f.write(str(i) + '\n')
+                f.close()
         elif type(value) is dict:
             log.info(str(key) + ': ' + str(len(value)))
+            if len(value) < 100000:
+                f = open(file_name, 'w')
+                for k, v in value.items():
+                    f.write(str(k) + '\t' + str(v) + '\n')
+                f.close()
         else:
             log.info(str(key) + ': ' + str(value))
+
+
+def was_similar_patch_merged(patch):
+    global _clusters
+    cluster = _clusters.get_cluster(_clusters.get_key_of_element(patch))
+    if cluster is None:
+        _statistic['error'].add(patch)
+    elif len(cluster) > 1:
+        _statistic['large cluster'].add(patch)
+        return True
+    return False
 
 
 def analyze_patch_set():
@@ -78,11 +104,11 @@ def patch_has_foreign_response(patch):
         return False
 
     for mail in list(LevelOrderIter(_threads.get_thread(patch))):
-        try:
-            if not get_author_of_msg(mail) is author:
-                return True
-        except KeyError:
-            _statistic['error'].add(mail)
+        this_author = get_author_of_msg(mail)
+        if this_author is None:
+            continue
+        if this_author is not author:
+            return True
     return False
 
 
@@ -104,13 +130,14 @@ def is_single_patch_ignored(patch):
     if patch_has_response(patch):
         if patch_has_foreign_response(patch):
             _statistic['foreign response'].add(patch)
-        else:
-            _statistic['ignored'].add(patch)
-    else:
-        _statistic['ignored'].add(patch)
+            return False
+    if was_similar_patch_merged(patch):
+        _statistic['similar patch'].add(patch)
+        return False
+    _statistic['ignored'].add(patch)
 
 
-def analyze_patch(patch, patches, ignore_versions=False, ignore_patch_set=False):
+def analyze_patch(patch, ignore_versions=False, ignore_patch_set=False):
     if (not ignore_versions) and has_versions(patch):
         return  # TODO: Analyze all versions
     if (not ignore_patch_set) and is_part_of_patch_set(patch):
@@ -128,6 +155,7 @@ def ignored_patches(config, prog, argv):
 
     global _config
     global _repo
+    global _clusters
     global _statistic
     global _patches
     global _threads
@@ -136,13 +164,13 @@ def ignored_patches(config, prog, argv):
     _config = config
 
     _repo = config.repo
-    f_cluster, cluster = config.load_patch_groups(must_exist=True)
-    cluster.optimize()
+    f_cluster, _clusters = config.load_patch_groups(must_exist=True)
+    _clusters.optimize()
 
-    _statistic['all patches'] = cluster.get_tagged() | cluster.get_untagged()
-    _statistic['upstream patches'] = cluster.get_tagged()
+    _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
+    _statistic['upstream patches'] = _clusters.get_tagged()
 
-    _patches = cluster.get_untagged()
+    _patches = _clusters.get_untagged()
 
     _threads = _repo.mbox.load_threads()
 
@@ -150,6 +178,6 @@ def ignored_patches(config, prog, argv):
     for patch in tqdm(_patches):
         analyze_patch(patch, _patches)
 
-    print_statistic()
+    write_and_print_statistic()
 
     return True

@@ -98,14 +98,12 @@ def get_author_of_msg (msg):
 
 
 def patch_has_foreign_response(patch):
-    if len(_threads.get_thread(patch).children) != 0:
+    if len(_threads.get_thread(patch).children) == 0:
         return False  # If there is no response the check is trivial
 
-    try:
-        author = get_author_of_msg(patch)
-    except KeyError:
-        _statistic['error'] = patch
-        return False
+    author = get_author_of_msg(patch)
+    if author is None:
+        _log.warning(patch)
 
     for mail in list(LevelOrderIter(_threads.get_thread(patch))):
         this_author = get_author_of_msg(mail)

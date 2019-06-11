@@ -28,7 +28,8 @@ _statistic = {
     'foreign response': set(),
     'patch set': set(),
     'large cluster': set(),
-    'similar patch': set()
+    'similar patch': set(),
+    'analyzed patches':set()
 }
 _patches = None
 _threads = None
@@ -97,6 +98,9 @@ def get_author_of_msg (msg):
 
 
 def patch_has_foreign_response(patch):
+    if len(_threads.get_thread(patch).children) != 0:
+        return False  # If there is no response the check is trivial
+
     try:
         author = get_author_of_msg(patch)
     except KeyError:
@@ -112,10 +116,6 @@ def patch_has_foreign_response(patch):
     return False
 
 
-def patch_has_response(patch):
-    return len(_threads.get_thread(patch).children) == 0
-
-
 def is_single_patch_ignored(patch):
     try:
         patch_mail = _repo[patch]
@@ -127,17 +127,17 @@ def is_single_patch_ignored(patch):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
         return None
 
-    if patch_has_response(patch):
-        if patch_has_foreign_response(patch):
-            _statistic['foreign response'].add(patch)
-            return False
+    if patch_has_foreign_response(patch):
+        _statistic['foreign response'].add(patch)
+        return False
+
     if was_similar_patch_merged(patch):
         _statistic['similar patch'].add(patch)
         return False
     _statistic['ignored'].add(patch)
 
 
-def get_patchset_of_patch(patch):
+def get_patch_set_of_patch(patch):
     return None
 
 
@@ -147,18 +147,20 @@ def get_versions_of_patch(patch):
 
 def analyze_patch(patch, ignore_versions=False, ignore_patch_set=False):
     if (not ignore_versions) and has_versions(patch):
-        patches = get_versions_of_patch(patch)
-        for patch in patches:
-            analyze_patch(patch, True)
-        _patches -= patches
         return
+#        patches = get_versions_of_patch(patch)
+#        for v_patch in patches:
+#            analyze_patch(v_patch, True)
+#        _patches -= patches
+#        return
     if (not ignore_patch_set) and is_part_of_patch_set(patch):
         _statistic['patch set'].add(patch)
-        patches = get_patchset_of_patch(patch)
-        for patch in patches:
-            analyze_patch(patch, True, True)
-        _patches -= patches
         return
+#        patches = get_patch_set_of_patch(patch)
+#        for p_patch in patches:
+#            analyze_patch(p_patch, True, True)
+#        _patches -= patches
+#        return
     # TODO: Handle version and patch set cases
     is_single_patch_ignored(patch)
 
@@ -185,14 +187,15 @@ def ignored_patches(config, prog, argv):
 
     _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
     _statistic['upstream patches'] = _clusters.get_tagged()
+    _statistic['analyzed patches'] = _clusters.get_untagged()
 
     _patches = _clusters.get_untagged()
 
     _threads = _repo.mbox.load_threads()
 
-    _log.info("Analyzing patches…")
+    _log.info('Analyzing patches…')
     for patch in tqdm(_patches):
-        analyze_patch(patch, _patches)
+        analyze_patch(patch)
 
     write_and_print_statistic()
 

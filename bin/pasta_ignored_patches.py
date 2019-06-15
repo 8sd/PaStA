@@ -90,14 +90,9 @@ def has_versions(patch):
 
 
 def get_author_of_msg (msg):
-    print(msg)
-
     email = _repo.mbox.get_messages(msg)[0]
 
     return email['From']
-
-    #author = _repo[msg].author
-    #return author.name + ' ' + author.email
 
 
 def patch_has_foreign_response(patch):
@@ -107,7 +102,6 @@ def patch_has_foreign_response(patch):
     author = get_author_of_msg(patch)
 
     for mail in list(LevelOrderIter(_threads.get_thread(patch))):
-        print(mail)
         this_author = get_author_of_msg(mail.name)
         if this_author is not author:
             return True
@@ -188,14 +182,10 @@ def ignored_patches(config, prog, argv):
     _statistic['upstream patches'] = _clusters.get_tagged()
     _statistic['analyzed patches'] = _clusters.get_untagged()
 
-    _patches = _clusters.get_untagged()
+#    _patches = _clusters.get_untagged()
+    _patches = _clusters.get_not_upstream_patches()
 
     _threads = _repo.mbox.load_threads()
-
-    # <1515670468-9198-1-git-send-email-abhijeet.kumar@intel.com>
-
-    print(patch_has_foreign_response('<E1ea6ZJ-0003BS-KB@debutante>'))
-    quit()
 
     _log.info('Analyzing patches…')
     for patch in tqdm(_patches):

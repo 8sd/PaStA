@@ -277,6 +277,15 @@ class Cluster:
     def get_key_of_element(self, elem):
         return self.lookup[elem]
 
+    def get_not_upstream_patches (self):
+        res = set ()
+        for group in self.iter_untagged():
+            repres = list(group)[0]
+            if self.get_tagged(repres):
+                continue
+            res |= group
+        return res
+
     @staticmethod
     def from_file(filename, must_exist=False):
         def split_elements(elems):

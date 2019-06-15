@@ -90,11 +90,14 @@ def has_versions(patch):
 
 
 def get_author_of_msg (msg):
-    try:
-        author = _repo[msg].author
-    except KeyError:
-        return None
-    return author.name + ' ' + author.email
+    print(msg)
+
+    email = _repo.mbox.get_messages(msg)[0]
+
+    return email['From']
+
+    #author = _repo[msg].author
+    #return author.name + ' ' + author.email
 
 
 def patch_has_foreign_response(patch):
@@ -102,13 +105,10 @@ def patch_has_foreign_response(patch):
         return False  # If there is no response the check is trivial
 
     author = get_author_of_msg(patch)
-    if author is None:
-        _log.warning(patch)
 
     for mail in list(LevelOrderIter(_threads.get_thread(patch))):
-        this_author = get_author_of_msg(mail)
-        if this_author is None:
-            continue
+        print(mail)
+        this_author = get_author_of_msg(mail.name)
         if this_author is not author:
             return True
     return False
@@ -160,6 +160,7 @@ def analyze_patch(patch, ignore_versions=False, ignore_patch_set=False):
 #        _patches -= patches
 #        return
     # TODO: Handle version and patch set cases
+
     is_single_patch_ignored(patch)
 
 
@@ -190,6 +191,11 @@ def ignored_patches(config, prog, argv):
     _patches = _clusters.get_untagged()
 
     _threads = _repo.mbox.load_threads()
+
+    # <1515670468-9198-1-git-send-email-abhijeet.kumar@intel.com>
+
+    print(patch_has_foreign_response('<E1ea6ZJ-0003BS-KB@debutante>'))
+    quit()
 
     _log.info('Analyzing patches…')
     for patch in tqdm(_patches):

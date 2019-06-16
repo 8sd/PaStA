@@ -25,16 +25,16 @@ _repo = None
 _clusters = None
 _statistic = {
     'ignored': set(),
-    'too old': set(),
-
-    'error patch series': set(),
-    'key error patch set': set()
-    'error': set(),
-    'key error': set(),
-    'foreign response': set(),
     'analyzed patches': set(),
     'ignored patch groups': set(),
-    'not ignored patch groups': set()
+    'not ignored patch groups': set(),
+
+    'too old': set(),
+    'foreign response': set(),
+
+    'key error': set(),
+    'error patch series': set(),
+    'key error patch set': set()
 }
 _patches = None
 _threads = None
@@ -107,8 +107,7 @@ def is_single_patch_ignored(patch):
         patch_mail = _repo[patch]
     except KeyError:
         _statistic['key error'].add(patch)
-        _log.warning("key error: " + patch)
-        return None
+        return False
 
     if _config.time_frame < patch_mail.date.replace(tzinfo=None):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed

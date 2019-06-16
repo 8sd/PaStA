@@ -22,14 +22,17 @@ _log = getLogger(__name__[-15:])
 _repo = None
 _clusters = None
 _statistic = {
-    'too old': set(),
     'ignored': set(),
-    'error': set(),
-    'key error': set(),
-    'foreign response': set(),
     'analyzed patches': set(),
     'ignored patch groups': set(),
-    'not ignored patch groups': set()
+    'not ignored patch groups': set(),
+
+    'too old': set(),
+    'foreign response': set(),
+
+    'key error': set(),
+    'error patch series': set(),
+    'key error patch set': set()
 }
 _patches = None
 _threads = None
@@ -82,12 +85,11 @@ def is_single_patch_ignored(patch):
         patch_mail = _repo[patch]
     except KeyError:
         _statistic['key error'].add(patch)
-        _log.warning("key error: " + patch)
-        return None
+        return False
 
     if _config.time_frame < patch_mail.date.replace(tzinfo=None):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
-        return None
+        return False
 
     if patch_has_foreign_response(patch):
         _statistic['foreign response'].add(patch)
@@ -101,14 +103,55 @@ def get_versions_of_patch(patch):
     return _clusters.get_untagged(patch)
 
 
+def is_part_of_patch_set(patch):
+    try:
+        return re.search(r'[0-9]+/[0-9]+\]', _repo[patch].mail_subject) is not None
+    except KeyError:
+        _statistic['key error patch set'].add(patch)
+        return False
+
+
+def get_patch_set(patch):
+    result = set()
+    result.add(patch)
+    thread = _threads.get_thread(patch)
+
+    if thread.children is None:
+        return result
+
+    if not is_part_of_patch_set(patch):
+        return result
+
+    # get cover letter
+    if thread.name is patch:
+        # If first mail of thread is the analyzed patch and the patch is part of the patch set
+        # the analyzed patch is the coverletter
+        cover = thread
+    elif any(patch in child.name for child in thread.children):
+        # If the analyzed patch is a child of the first mail in thread the first mail of the thread
+        # is the cover letter
+        cover = thread
+    else:
+        # If the cover letter is replied this is a special case I won't check
+        # maybe Mete's code can be used to analyze it
+        _statistic['error patch series'].add(patch)
+        return result
+    result.add(cover.name)
+
+    # get leaves of cover letter
+    for child in cover.children:
+        result.add(child.name)
+    return result
+
+
 def get_related_patches(patch):
     patches = get_versions_of_patch(patch)
+    patches |= get_patch_set(patch)
     return patches
 
 
 def analyze_patch(patch):
     if patch in _statistic['analyzed patches']:
-        print('.', end='')
         return
 
     patches = get_related_patches(patch)
@@ -149,7 +192,6 @@ def ignored_patches(config, prog, argv):
     _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
     _statistic['upstream patches'] = _clusters.get_tagged()
 
-#    _patches = _clusters.get_untagged()
     _patches = _clusters.get_not_upstream_patches()
 
     _threads = _repo.mbox.load_threads()

@@ -25,11 +25,11 @@ _statistic = {
     'too old': set(),
     'ignored': set(),
     'error': set(),
+    'key error': set(),
     'foreign response': set(),
-    'patch set': set(),
-    'large cluster': set(),
-    'similar patch': set(),
-    'analyzed patches':set()
+    'analyzed patches': set(),
+    'ignored patch groups': set(),
+    'not ignored patch groups': set()
 }
 _patches = None
 _threads = None
@@ -59,39 +59,8 @@ def write_and_print_statistic():
             log.info(str(key) + ': ' + str(value))
 
 
-def was_similar_patch_merged(patch):
-    global _clusters
-    cluster = _clusters.get_cluster(_clusters.get_key_of_element(patch))
-    if cluster is None:
-        _statistic['error'].add(patch)
-    elif len(cluster) > 1:
-        _statistic['large cluster'].add(patch)
-        return True
-    return False
-
-
-def analyze_patch_set():
-    return  # TODO iterate over all patches from patch set
-
-
-def is_part_of_patch_set(patch):
-    try:
-        subject = _repo[patch].mail_subject
-    except KeyError:
-        return False
-    if type(re.search(r'[0-9]+\/[0-9]+\]', subject)) is type(None):
-        return False
-    return True
-    # TODO check if patch is part of patch set
-
-
-def has_versions(patch):
-    return False  # TODO check if entity (patch, patch set) has versions
-
-
-def get_author_of_msg (msg):
+def get_author_of_msg(msg):
     email = _repo.mbox.get_messages(msg)[0]
-
     return email['From']
 
 
@@ -112,7 +81,8 @@ def is_single_patch_ignored(patch):
     try:
         patch_mail = _repo[patch]
     except KeyError:
-        _statistic['error'].add(patch)
+        _statistic['key error'].add(patch)
+        _log.warning("key error: " + patch)
         return None
 
     if _config.time_frame < patch_mail.date.replace(tzinfo=None):
@@ -123,39 +93,37 @@ def is_single_patch_ignored(patch):
         _statistic['foreign response'].add(patch)
         return False
 
-    if was_similar_patch_merged(patch):
-        _statistic['similar patch'].add(patch)
-        return False
     _statistic['ignored'].add(patch)
-
-
-def get_patch_set_of_patch(patch):
-    return None
+    return True
 
 
 def get_versions_of_patch(patch):
-    return None
+    return _clusters.get_untagged(patch)
 
 
-def analyze_patch(patch, ignore_versions=False, ignore_patch_set=False):
-    if (not ignore_versions) and has_versions(patch):
+def get_related_patches(patch):
+    patches = get_versions_of_patch(patch)
+    return patches
+
+
+def analyze_patch(patch):
+    if patch in _statistic['analyzed patches']:
+        print('.', end='')
         return
-#        patches = get_versions_of_patch(patch)
-#        for v_patch in patches:
-#            analyze_patch(v_patch, True)
-#        _patches -= patches
-#        return
-    if (not ignore_patch_set) and is_part_of_patch_set(patch):
-        _statistic['patch set'].add(patch)
-        return
-#        patches = get_patch_set_of_patch(patch)
-#        for p_patch in patches:
-#            analyze_patch(p_patch, True, True)
-#        _patches -= patches
-#        return
-    # TODO: Handle version and patch set cases
 
-    is_single_patch_ignored(patch)
+    patches = get_related_patches(patch)
+
+    _statistic['analyzed patches'] |= patches
+
+    for patch in patches:
+        ignored = is_single_patch_ignored(patch)
+        if ignored is None:
+            continue
+        if not ignored:
+            _statistic['not ignored patch groups'] |= patches
+            return
+
+    _statistic['ignored patch groups'] |= patches
 
 
 def ignored_patches(config, prog, argv):
@@ -180,7 +148,6 @@ def ignored_patches(config, prog, argv):
 
     _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
     _statistic['upstream patches'] = _clusters.get_tagged()
-    _statistic['analyzed patches'] = _clusters.get_untagged()
 
 #    _patches = _clusters.get_untagged()
     _patches = _clusters.get_not_upstream_patches()
@@ -190,6 +157,8 @@ def ignored_patches(config, prog, argv):
     _log.info('Analyzing patches…')
     for patch in tqdm(_patches):
         analyze_patch(patch)
+
+    _statistic['analyzed patches'] = _patches
 
     write_and_print_statistic()
 

@@ -25,16 +25,16 @@ _repo = None
 _clusters = None
 _statistic = {
     'ignored': set(),
-    'analyzed patches': set(),
-    'ignored patch groups': set(),
-    'not ignored patch groups': set(),
-
     'too old': set(),
-    'foreign response': set(),
 
-    'key error': set(),
     'error patch series': set(),
     'key error patch set': set()
+    'error': set(),
+    'key error': set(),
+    'foreign response': set(),
+    'analyzed patches': set(),
+    'ignored patch groups': set(),
+    'not ignored patch groups': set()
 }
 _patches = None
 _threads = None
@@ -83,80 +83,6 @@ def write_and_print_statistic():
         else:
             log.info(str(key) + ': ' + str(value))
 
-    file_name = "ignored_with_subject.tsv"
-    f = open(file_name, 'w')
-    f.write('MailID' + '\t')
-    f.write('Subject' + '\t')
-    f.write('From' + '\t')
-    f.write('Reference' + '\t')
-    f.write('Category' + '\t')
-    f.write('Description')
-    f.write('\n')
-    for patch in tqdm(_statistic['ignored patch groups']):
-        email = _repo.mbox.get_messages(patch)[0]
-        f.write(patch + '\t')  # MailID
-        f.write(email['Subject'].replace('\n', ' ') + '\t')  # Subject
-        f.write(email['From'] + '\t')  # From
-        f.write('\t')  # Reference
-        if 'linux-next' in email['Subject']:  # Category
-            f.write('Linux next')
-        elif 'git pull' in email['Subject'].lower():
-            f.write('Pull Request')
-        elif patch_is_sent_to_wrong_maintainer(patch):
-            f.write('Wrong Maintainer')
-        f.write('\t')
-        f.write('')  # Description
-        f.write('\n')
-    f.close()
-
-    all_authors = set()
-    author_ignored = dict()
-    author_not_ignored = dict()
-
-    for patch in _patches:
-        email = _repo.mbox.get_messages(patch)[0]
-        author = email['From'].replace('"', "'")
-        if author in all_authors:
-            if patch in _statistic['ignored patch groups']:
-                author_ignored[author] += 1
-            else:
-                author_not_ignored[author] += 1
-        else:
-            all_authors.add(author)
-            if patch in _statistic['ignored patch groups']:
-                author_ignored[author] = 1
-                author_not_ignored[author] = 0
-            else:
-                author_ignored[author] = 0
-                author_not_ignored[author] = 1
-
-    file_name = "authors.tsv"
-    f = open(file_name, 'w')
-    f.write('From\t')
-    f.write('Ignored\t')
-    f.write('Not Ignored\t')
-    f.write('All\n')
-    for author in all_authors:
-        f.write(author + '\t')
-        f.write(str(author_ignored[author]) + '\t')
-        f.write(str(author_not_ignored[author]) + '\t')
-        f.write(str(author_ignored[author] + author_not_ignored[author]) + '\n')
-    f.close()
-
-    file_name = "all_patches.tsv"
-    f = open(file_name, 'w')
-    f.write('MailID' + '\t')
-    f.write('From' + '\t')
-    f.write('Ignored' + '\n')
-
-    for patch in _patches:
-        email = _repo.mbox.get_messages(patch)[0]
-        f.write(patch.replace('"', "'") + '\t')
-        f.write(email['From'].replace('"', "'") + '\t')
-        f.write(str(patch in _statistic['ignored patch groups']) + '\n')
-    f.close()
-
-
 
 def get_author_of_msg(msg):
     email = _repo.mbox.get_messages(msg)[0]
@@ -181,7 +107,8 @@ def is_single_patch_ignored(patch):
         patch_mail = _repo[patch]
     except KeyError:
         _statistic['key error'].add(patch)
-        return False
+        _log.warning("key error: " + patch)
+        return None
 
     if _config.time_frame < patch_mail.date.replace(tzinfo=None):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
@@ -285,7 +212,8 @@ def ignored_patches(config, prog, argv):
     f_cluster, _clusters = config.load_patch_groups(must_exist=True)
     _clusters.optimize()
 
-    _statistic['all patches'] = _clusters.get_untagged()
+    _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
+    _statistic['upstream patches'] = _clusters.get_tagged()
 
     _patches = _clusters.get_not_upstream_patches()
 

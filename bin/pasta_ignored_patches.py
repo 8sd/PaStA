@@ -83,7 +83,6 @@ def write_and_print_statistic():
         else:
             log.info(str(key) + ': ' + str(value))
 
-<<<<<<< HEAD
     file_name = "ignored_with_subject.tsv"
     f = open(file_name, 'w')
     f.write('MailID' + '\t')

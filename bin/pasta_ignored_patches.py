@@ -229,3 +229,4 @@ def ignored_patches(config, prog, argv):
     write_and_print_statistic()
 
     return True
+

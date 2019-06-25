@@ -274,9 +274,6 @@ class Cluster:
         with open(filename, 'w') as f:
             f.write(str(self))
 
-    def get_key_of_element(self, elem):
-        return self.lookup[elem]
-
     def get_not_upstream_patches (self):
         res = set ()
         for group in self.iter_untagged():

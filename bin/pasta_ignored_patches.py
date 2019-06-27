@@ -18,6 +18,8 @@ from logging import getLogger
 from anytree import LevelOrderIter
 from tqdm import tqdm
 
+import tools.gender.gender_guesser.detector as gender
+
 __check_for_wrong_maintainer = False
 __check_for_applicability = False
 
@@ -200,6 +202,10 @@ def analyze_patch(patch):
 
 def evaluate_result():
     patches_sorted = sorted(_statistic['ignored patch groups'])
+
+    all_authors = set()
+    author_ignored = dict()
+    author_not_ignored = dict()
     # patches_sorted = sorted(_statistic['all patches'])
 
     result_patch_data = list()
@@ -215,6 +221,7 @@ def evaluate_result():
 
     for patch in patches_sorted:
         email = _repo.mbox.get_messages(patch)[0]
+        author = email['From'].replace('\'', '"')
         if 'linux-next' in email['Subject']:  # Category
             category = 'Linux next'
         elif 'git pull' in email['Subject'].lower():
@@ -229,7 +236,7 @@ def evaluate_result():
         result_patch_data.append({
             'id': patch,
             'subject': email['Subject'],
-            'from': email['From'],
+            'from': author,
             'ignored': patch in _statistic['ignored patch groups'],
             'upstream': patch in _statistic['upstream patches'],
             'category': category,
@@ -242,18 +249,8 @@ def evaluate_result():
             'in Merge Window': '',
             'after Version': '',
         })
-    write_dict_list(result_patch_data, 'patches.tsv')
 
-    # author
-    result_author_data = list()
-
-    all_authors = set()
-    author_ignored = dict()
-    author_not_ignored = dict()
-
-    for patch in _patches:
-        email = _repo.mbox.get_messages(patch)[0]
-        author = email['From'].replace('\'', '"')
+        # Needed for author analysis
         if author in all_authors:
             if patch in _statistic['ignored patch groups']:
                 author_ignored[author] += 1
@@ -267,6 +264,13 @@ def evaluate_result():
             else:
                 author_ignored[author] = 0
                 author_not_ignored[author] = 1
+        # End of author analysis
+
+    write_dict_list(result_patch_data, 'patches.tsv')
+
+    # author
+    result_author_data = list()
+    gender_detector = gender.Detector()
 
     for author in all_authors:
         domain = re.search('@[\w\-\.]+', author).group()[1:]
@@ -320,7 +324,7 @@ def evaluate_result():
             'Company': company,
             'Country': country,
             'Ethnicity': '',
-            'Sex': ''
+            'Gender': gender_detector.get_gender(re.search('[\w]+ ', author).group()[:-1])
         })
 
     write_dict_list(result_author_data, 'authors.tsv')

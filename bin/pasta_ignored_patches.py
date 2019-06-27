@@ -13,11 +13,13 @@ the COPYING file in the top-level directory.
 import re
 import datetime
 import subprocess
-import os
 
 from logging import getLogger
 from anytree import LevelOrderIter
 from tqdm import tqdm
+
+__check_for_wrong_maintainer = False
+__check_for_applicability = False
 
 _config = None
 _log = getLogger(__name__[-15:])
@@ -40,10 +42,27 @@ _patches = None
 _threads = None
 
 
+def write_cell(file, string):
+    string = str(string).replace('\'', '"').replace('\n', '|').replace('\t', ' ').replace('=', '-')
+    file.write(string + '\t')
+
+
+def write_dict_list(_list, name):
+    f = open(name, 'w')
+    for k in _list[0].keys():
+        write_cell(f, k)
+    f.write('\n')
+    for data in _list:
+        for k in data.keys():
+            write_cell(f, data[k])
+        f.write('\n')
+
+
 def patch_is_sent_to_wrong_maintainer(patch):
     affected = _repo[patch].diff.affected
     maintainers = set()
 
+# TODO: Check out for month of submission
     for file in affected:
         get_maintainer = subprocess.Popen(['perl', 'scripts/get_maintainer.pl', file], cwd='resources/linux/repo/',
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -51,13 +70,14 @@ def patch_is_sent_to_wrong_maintainer(patch):
         maintainers |= set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out.decode("utf-8")))
         # Maybe we ought to check if there is one correct maintainer per file?
 
-    print(maintainers)
-    print(_repo.mbox.get_messages(patch)[0]['To'])
-
     for maintainer in maintainers:
         if maintainer not in _repo.mbox.get_messages(patch)[0]['To']:
             return True
     return False
+
+
+def patch_is_not_applicable(patch):
+    pass
 
 
 def write_and_print_statistic():
@@ -82,79 +102,6 @@ def write_and_print_statistic():
                 f.close()
         else:
             log.info(str(key) + ': ' + str(value))
-
-    file_name = "ignored_with_subject.tsv"
-    f = open(file_name, 'w')
-    f.write('MailID' + '\t')
-    f.write('Subject' + '\t')
-    f.write('From' + '\t')
-    f.write('Reference' + '\t')
-    f.write('Category' + '\t')
-    f.write('Description')
-    f.write('\n')
-    for patch in tqdm(_statistic['ignored patch groups']):
-        email = _repo.mbox.get_messages(patch)[0]
-        f.write(patch + '\t')  # MailID
-        f.write(email['Subject'].replace('\n', ' ') + '\t')  # Subject
-        f.write(email['From'] + '\t')  # From
-        f.write('\t')  # Reference
-        if 'linux-next' in email['Subject']:  # Category
-            f.write('Linux next')
-        elif 'git pull' in email['Subject'].lower():
-            f.write('Pull Request')
-        elif patch_is_sent_to_wrong_maintainer(patch):
-            f.write('Wrong Maintainer')
-        f.write('\t')
-        f.write('')  # Description
-        f.write('\n')
-    f.close()
-
-    all_authors = set()
-    author_ignored = dict()
-    author_not_ignored = dict()
-
-    for patch in _patches:
-        email = _repo.mbox.get_messages(patch)[0]
-        author = email['From'].replace('"', "'")
-        if author in all_authors:
-            if patch in _statistic['ignored patch groups']:
-                author_ignored[author] += 1
-            else:
-                author_not_ignored[author] += 1
-        else:
-            all_authors.add(author)
-            if patch in _statistic['ignored patch groups']:
-                author_ignored[author] = 1
-                author_not_ignored[author] = 0
-            else:
-                author_ignored[author] = 0
-                author_not_ignored[author] = 1
-
-    file_name = "authors.tsv"
-    f = open(file_name, 'w')
-    f.write('From\t')
-    f.write('Ignored\t')
-    f.write('Not Ignored\t')
-    f.write('All\n')
-    for author in all_authors:
-        f.write(author + '\t')
-        f.write(str(author_ignored[author]) + '\t')
-        f.write(str(author_not_ignored[author]) + '\t')
-        f.write(str(author_ignored[author] + author_not_ignored[author]) + '\n')
-    f.close()
-
-    file_name = "all_patches.tsv"
-    f = open(file_name, 'w')
-    f.write('MailID' + '\t')
-    f.write('From' + '\t')
-    f.write('Ignored' + '\n')
-
-    for patch in _patches:
-        email = _repo.mbox.get_messages(patch)[0]
-        f.write(patch.replace('"', "'") + '\t')
-        f.write(email['From'].replace('"', "'") + '\t')
-        f.write(str(patch in _statistic['ignored patch groups']) + '\n')
-    f.close()
 
 
 def get_author_of_msg(msg):
@@ -217,20 +164,7 @@ def get_patch_set(patch):
     if not is_part_of_patch_set(patch):
         return result
 
-    # get cover letter
-    if thread.name is patch:
-        # If first mail of thread is the analyzed patch and the patch is part of the patch set
-        # the analyzed patch is the coverletter
-        cover = thread
-    elif any(patch in child.name for child in thread.children):
-        # If the analyzed patch is a child of the first mail in thread the first mail of the thread
-        # is the cover letter
-        cover = thread
-    else:
-        # If the cover letter is replied this is a special case I won't check
-        # maybe Mete's code can be used to analyze it
-        _statistic['error patch series'].add(patch)
-        return result
+    cover = thread  # this only works if
     result.add(cover.name)
 
     # get leaves of cover letter
@@ -262,6 +196,134 @@ def analyze_patch(patch):
             return
 
     _statistic['ignored patch groups'] |= patches
+
+
+def evaluate_result():
+    patches_sorted = sorted(_statistic['ignored patch groups'])
+    # patches_sorted = sorted(_statistic['all patches'])
+
+    result_patch_data = list()
+
+    tags = dict()
+    for reference in _repo.repo.references:
+        if '/tags/' not in reference:
+            continue
+        reference = _repo.repo.lookup_reference(reference)
+        commit_hash = reference.target.hex
+        commit = _repo.repo[commit_hash]
+        tags[reference.shorthand] = commit
+
+    for patch in patches_sorted:
+        email = _repo.mbox.get_messages(patch)[0]
+        if 'linux-next' in email['Subject']:  # Category
+            category = 'Linux next'
+        elif 'git pull' in email['Subject'].lower():
+            category = 'Pull Request'
+        else:
+            category = ''
+            if __check_for_wrong_maintainer and patch_is_sent_to_wrong_maintainer(patch):
+                category += 'Wrong Maintainer '
+            elif __check_for_applicability and patch_is_not_applicable(patch):
+                category += 'Not Applicable'
+
+        result_patch_data.append({
+            'id': patch,
+            'subject': email['Subject'],
+            'from': email['From'],
+            'ignored': patch in _statistic['ignored patch groups'],
+            'upstream': patch in _statistic['upstream patches'],
+            'category': category,
+            '#LoC': _repo[patch].diff.lines,
+            '#Files': len(_repo[patch].diff.affected),
+            'DoW': _repo[patch].date.weekday(),
+            'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
+            'Month': _repo[patch].date.month,
+            'Year': _repo[patch].date.year,
+            'in Merge Window': '',
+            'after Version': '',
+        })
+    write_dict_list(result_patch_data, 'patches.tsv')
+
+    # author
+    result_author_data = list()
+
+    all_authors = set()
+    author_ignored = dict()
+    author_not_ignored = dict()
+
+    for patch in _patches:
+        email = _repo.mbox.get_messages(patch)[0]
+        author = email['From'].replace('\'', '"')
+        if author in all_authors:
+            if patch in _statistic['ignored patch groups']:
+                author_ignored[author] += 1
+            else:
+                author_not_ignored[author] += 1
+        else:
+            all_authors.add(author)
+            if patch in _statistic['ignored patch groups']:
+                author_ignored[author] = 1
+                author_not_ignored[author] = 0
+            else:
+                author_ignored[author] = 0
+                author_not_ignored[author] = 1
+
+    for author in all_authors:
+        domain = re.search('@[\w\-\.]+', author).group()[1:]
+
+        company = domain
+        if 'gmail.com' in company or 'gmx.' in company or 'outlook.' in company:
+            company = ''
+        elif 'amd.com' in company:
+            company = 'AMD'
+        elif 'arm.com' in company:
+            company = 'ARM'
+        elif 'codeaurora.org' in company:
+            company = 'Code Aurora'
+        elif 'huawei.com' in company:
+            company = 'Huawei'
+        elif 'intel.com' in company:
+            company = 'Intel'
+        elif 'ibm.com' in company:
+            company = 'IBM'
+        elif 'kernel.org' in company:
+            company = 'KERNEL'
+        elif 'linaro.org' in company:
+            company = 'Linaro'
+        elif 'nxp.com' in company:
+            company = 'NXP'
+        elif 'oracle.com' in company:
+            company = 'Oracle'
+        elif 'redhat.com' in company:
+            company = 'Red Hat'
+        elif 'suse.' in company:
+            company = 'Suse'
+        elif 'xilinx.com' in company:
+            company = 'Xilinx'
+        elif 'zytor.com' in company:
+            company = 'Zytor'
+
+        country = re.findall('\.[\w]+', domain)[-1][1:]
+        if 'com' in country \
+                or 'net' in country \
+                or 'org' in country \
+                or 'edu' in country \
+                or 'io' in country \
+                or 'name' in country \
+                or 'xyz' in country:
+            country = ''
+
+        result_author_data.append({
+            'Author': author,
+            'Ignored': author_ignored[author],
+            'Not Ignored': author_not_ignored[author],
+            'Company': company,
+            'Country': country,
+            'Ethnicity': '',
+            'Sex': ''
+        })
+
+    write_dict_list(result_author_data, 'authors.tsv')
 
 
 def ignored_patches(config, prog, argv):
@@ -298,6 +360,7 @@ def ignored_patches(config, prog, argv):
 
     _statistic['analyzed patches'] = _patches
 
-    write_and_print_statistic()
+    # write_and_print_statistic()
+    evaluate_result()
 
     return True

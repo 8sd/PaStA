@@ -201,7 +201,7 @@ def analyze_patch(patch):
 
 
 def evaluate_result():
-    patches_sorted = sorted(_statistic['ignored patch groups'])
+    patches_sorted = sorted(_statistic['all patches'])
 
     all_authors = set()
     author_ignored = dict()
@@ -317,6 +317,13 @@ def evaluate_result():
                 or 'xyz' in country:
             country = ''
 
+        name = re.search('[\w]+ ', author)
+        if name is None:
+            print(author)
+            name = ""
+        else:
+            name = name.group()[:-1]
+
         result_author_data.append({
             'Author': author,
             'Ignored': author_ignored[author],
@@ -324,7 +331,7 @@ def evaluate_result():
             'Company': company,
             'Country': country,
             'Ethnicity': '',
-            'Gender': gender_detector.get_gender(re.search('[\w]+ ', author).group()[:-1])
+            'Gender': gender_detector.get_gender(name)
         })
 
     write_dict_list(result_author_data, 'authors.tsv')

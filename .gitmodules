@@ -2,3 +2,6 @@
 	path = resources
 	url = https://github.com/lfd/PaStA-resources.git
 	branch = master
+[submodule "tools/gender"]
+	path = tools/gender
+	url = https://github.com/lead-ratings/gender-guesser.git

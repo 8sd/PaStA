@@ -5,3 +5,6 @@
 [submodule "tools/gender"]
 	path = tools/gender
 	url = https://github.com/lead-ratings/gender-guesser.git
+[submodule "tools/ethnicity"]
+	path = tools/ethnicity
+	url = https://github.com/eeghor/ethnicity.git

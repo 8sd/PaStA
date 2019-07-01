@@ -217,10 +217,12 @@ def evaluate_result():
             continue
         reference = _repo.repo.lookup_reference(reference)
         commit_hash = reference.target.hex
-        commit = _repo.repo[commit_hash]
+        commit = _repo.repo.get(commit_hash)
         tags[reference.shorthand] = commit
+        print(reference.shorthand + ' ' + commit.commit_time)
 
-    for patch in patches_sorted:
+    _log.info('Evaluating Patches…')
+    for patch in tqdm(patches_sorted):
         email = _repo.mbox.get_messages(patch)[0]
         author = email['From'].replace('\'', '"')
         if 'linux-next' in email['Subject']:  # Category
@@ -233,23 +235,25 @@ def evaluate_result():
                 category += 'Wrong Maintainer '
             elif __check_for_applicability and patch_is_not_applicable(patch):
                 category += 'Not Applicable'
-
-        result_patch_data.append({
-            'id': patch,
-            'subject': email['Subject'],
-            'from': author,
-            'ignored': patch in _statistic['ignored patch groups'],
-            'upstream': patch in _statistic['upstream patches'],
-            'category': category,
-            '#LoC': _repo[patch].diff.lines,
-            '#Files': len(_repo[patch].diff.affected),
-            'DoW': _repo[patch].date.weekday(),
-            'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
-            'Month': _repo[patch].date.month,
-            'Year': _repo[patch].date.year,
-            'in Merge Window': '',
-            'after Version': '',
-        })
+        try:
+            result_patch_data.append({
+                'id': patch,
+                'subject': email['Subject'],
+                'from': author,
+                'ignored': patch in _statistic['ignored patch groups'],
+                'upstream': patch in _statistic['upstream patches'],
+                'category': category,
+                '#LoC': _repo[patch].diff.lines,
+                '#Files': len(_repo[patch].diff.affected),
+                'DoW': _repo[patch].date.weekday(),
+                'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
+                'Month': _repo[patch].date.month,
+                'Year': _repo[patch].date.year,
+                'in Merge Window': '',
+                'after Version': '',
+            })
+        except KeyError:
+            pass
 
         # Needed for author analysis
         if author in all_authors:

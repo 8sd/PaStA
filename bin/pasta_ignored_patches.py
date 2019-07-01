@@ -19,6 +19,7 @@ from anytree import LevelOrderIter
 from tqdm import tqdm
 
 import tools.gender.gender_guesser.detector as gender
+import tools.ethnicity.ethnicity.ethnicity as ethnicity
 
 __check_for_wrong_maintainer = False
 __check_for_applicability = False
@@ -271,8 +272,10 @@ def evaluate_result():
     # author
     result_author_data = list()
     gender_detector = gender.Detector()
+    ethnicity_detector = ethnicity.Ethnicity().make_dicts()
 
-    for author in all_authors:
+    _log.info('Evaluating authors…')
+    for author in tqdm(all_authors):
         domain = re.search('@[\w\-\.]+', author).group()[1:]
 
         company = domain
@@ -317,12 +320,19 @@ def evaluate_result():
                 or 'xyz' in country:
             country = ''
 
-        name = re.search('[\w]+ ', author)
+        name = re.search('\w[\w\s.-]+\w', author)
         if name is None:
             print(author)
             name = ""
         else:
             name = name.group()[:-1]
+
+        ethnicity_result = ethnicity_detector.get([name])['Ethnicity'][0]
+
+        gender_result = gender_detector.get_gender(name)
+        if 'tip-bot' in author:
+            gender_result = 'Bot'
+            ethnicity_result = 'Bot'
 
         result_author_data.append({
             'Author': author,
@@ -330,8 +340,8 @@ def evaluate_result():
             'Not Ignored': author_not_ignored[author],
             'Company': company,
             'Country': country,
-            'Ethnicity': '',
-            'Gender': gender_detector.get_gender(name)
+            'Ethnicity': ethnicity_result,
+            'Gender': gender_result
         })
 
     write_dict_list(result_author_data, 'authors.tsv')

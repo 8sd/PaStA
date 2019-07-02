@@ -17,6 +17,7 @@ import subprocess
 from logging import getLogger
 from anytree import LevelOrderIter
 from tqdm import tqdm
+from dateutil import parser
 
 import tools.gender.gender_guesser.detector as gender
 import tools.ethnicity.ethnicity.ethnicity as ethnicity
@@ -211,16 +212,19 @@ def evaluate_result():
 
     result_patch_data = list()
 
-    tags = dict()
-    for reference in _repo.repo.references:
-        if '/tags/' not in reference:
-            continue
-        reference = _repo.repo.lookup_reference(reference)
-        commit_hash = reference.target.hex
-        commit = _repo.repo.get(commit_hash)
-        tags[reference.shorthand] = commit
-        print(reference.shorthand + ' ' + commit.commit_time)
+    # Use this script to generate ne new tags file
+    # git log --tags --simplify-by-decoration --pretty='format:%D%x09%cD' | awk -F '\t' '/tag/ {print $1"\t"$2}' \
+    # | sed 's/tag: //g' > ../tags
+    _log.info('Loading Tags')
+    tags = list()
+    tags_file = open('resources/linux/tags', 'r')
+    for line in tags_file:
+        tag = line.split('\t')[0]
+        tags.append((tag, parser.parse(line.split('\t')[1][:-1]), 'rc' in line))
 
+    tags = sorted(tags, key=lambda x: x[1])
+    _log.info('  ↪ done')
+    
     _log.info('Evaluating Patches…')
     for patch in tqdm(patches_sorted):
         email = _repo.mbox.get_messages(patch)[0]
@@ -235,6 +239,18 @@ def evaluate_result():
                 category += 'Wrong Maintainer '
             elif __check_for_applicability and patch_is_not_applicable(patch):
                 category += 'Not Applicable'
+
+        for (tag, timestamp, rc) in tags:
+            date_of_mail = parser.parse(email['Date'])
+            if timestamp > date_of_mail:
+                break
+            tag_of_patch = tag
+            if rc:
+                rcv = re.search('-rc[0-9]+', tag).group()[3:]
+            else:
+                rcv = 0
+            version = re.search('[0-9v\.]+', tag).group()
+
         try:
             result_patch_data.append({
                 'id': patch,
@@ -249,8 +265,9 @@ def evaluate_result():
                 'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
                 'Month': _repo[patch].date.month,
                 'Year': _repo[patch].date.year,
-                'in Merge Window': '',
-                'after Version': '',
+                'after Version': tag_of_patch,
+                'rcv': rcv,
+                'Kernel version': version
             })
         except KeyError:
             pass

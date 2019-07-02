@@ -133,7 +133,7 @@ def is_single_patch_ignored(patch):
         _statistic['key error'].add(patch)
         return False
 
-    if _config.time_frame < patch_mail.date.replace(tzinfo=None):
+    if _config.time_frame < patch_mail.date:
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
         return False
 

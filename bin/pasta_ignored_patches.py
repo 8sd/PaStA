@@ -126,7 +126,13 @@ def patch_has_foreign_response(patch):
 
 
 def is_single_patch_ignored(patch):
-    if _config.time_frame < _repo.mbox[patch].date:
+    try:
+        patch_mail = _repo[patch]
+    except KeyError:
+        _statistic['key error'].add(patch)
+        return False
+
+    if _config.time_frame < patch_mail.date:
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
         return False
 

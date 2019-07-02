@@ -203,7 +203,9 @@ def analyze_patch(patch):
 
 
 def evaluate_result():
+    _log.info('Sorting ' + str(len(_statistic['all patches'])) + ' Patches…')
     patches_sorted = sorted(_statistic['all patches'])
+    _log.info('  ↪ done')
 
     all_authors = set()
     author_ignored = dict()
@@ -289,6 +291,7 @@ def evaluate_result():
         # End of author analysis
 
     write_dict_list(result_patch_data, 'patches.tsv')
+    _log.info('  ↪ done')
 
     # author
     result_author_data = list()
@@ -366,6 +369,7 @@ def evaluate_result():
         })
 
     write_dict_list(result_author_data, 'authors.tsv')
+    _log.info('  ↪ done')
 
 
 def ignored_patches(config, prog, argv):

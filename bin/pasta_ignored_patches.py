@@ -377,7 +377,6 @@ def ignored_patches(config, prog, argv):
     global _patches
     global _threads
 
-    config.time_frame = config.time_frame.replace(tzinfo=None)
     _config = config
 
     _repo = config.repo

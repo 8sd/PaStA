@@ -22,6 +22,7 @@ from .Cluster import Cluster
 from .Repository import Repository
 from .PatchStack import PatchStackDefinition
 from .Util import load_commit_hashes, persist_commit_hashes, parse_date_ymd
+from dateutil import tz
 
 log = getLogger(__name__[-15:])
 
@@ -204,7 +205,7 @@ class Config:
             self.mbox_mindate = parse_date_ymd(mbox['MBOX_MINDATE'])
             self.mbox_maxdate = parse_date_ymd(mbox['MBOX_MAXDATE'])
             try:
-                self.time_frame = parse_date_ymd(mbox['TIME_FRAME'])
+                self.time_frame = parse_date_ymd(mbox['TIME_FRAME']).replace(tzinfo=tz.tzutc())
             except KeyError as e:
                 log.warning('Timeframe not defined in config')
                 self.time_frame = None

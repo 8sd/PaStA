@@ -8,9 +8,3 @@
 [submodule "tools/ethnicity"]
 	path = tools/ethnicity
 	url = https://github.com/eeghor/ethnicity.git
-[submodule "ethnicity"]
-	path = ethnicity
-	url = https://github.com/eeghor/ethnicity.git
-[submodule "tools/gender-guesser"]
-	path = tools/gender-guesser
-	url = https://github.com/lead-ratings/gender-guesser.git

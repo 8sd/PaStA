@@ -22,7 +22,7 @@ from dateutil import parser
 import tools.gender.gender_guesser.detector as gender
 import tools.ethnicity.ethnicity.ethnicity as ethnicity
 
-__check_for_wrong_maintainer = True
+__check_for_wrong_maintainer = False
 __check_for_applicability = False
 
 _config = None
@@ -63,7 +63,7 @@ def write_dict_list(_list, name):
 
 
 def patch_is_sent_to_wrong_maintainer(patch):
-    affected = _repo.mbox[patch].diff.affected
+    affected = _repo[patch].diff.affected
     maintainers = set()
 
 # TODO: Check out for month of submission
@@ -108,8 +108,9 @@ def write_and_print_statistic():
             log.info(str(key) + ': ' + str(value))
 
 
-def get_author_of_msg(patch):
-    return _repo.mbox[patch].author_name
+def get_author_of_msg(msg):
+    email = _repo.mbox.get_messages(msg)[0]
+    return email['From']
 
 
 def patch_has_foreign_response(patch):
@@ -132,7 +133,7 @@ def is_single_patch_ignored(patch):
         _statistic['key error'].add(patch)
         return False
 
-    if _config.time_frame < patch_mail.date:
+    if _config.time_frame < patch_mail.date.replace(tzinfo=None):
         _statistic['too old'].add(patch)  # Patch is too new to be analyzed
         return False
 
@@ -150,7 +151,7 @@ def get_versions_of_patch(patch):
 
 def is_part_of_patch_set(patch):
     try:
-        return re.search(r'[0-9]+/[0-9]+\]', _repo.mbox[patch].subject) is not None
+        return re.search(r'[0-9]+/[0-9]+\]', _repo[patch].mail_subject) is not None
     except KeyError:
         _statistic['key error patch set'].add(patch)
         return False
@@ -260,12 +261,12 @@ def evaluate_result():
                 'ignored': patch in _statistic['ignored patch groups'],
                 'upstream': patch in _statistic['upstream patches'],
                 'category': category,
-                '#LoC': _repo.mbox[patch].diff.lines,
-                '#Files': len(_repo.mbox[patch].diff.affected),
-                'DoW': _repo.mbox[patch].date.weekday(),
-                'ToD': _repo.mbox[patch].date.hour + (_repo.mbox[patch].date.minute / 60),
-                'Month': _repo.mbox[patch].date.month,
-                'Year': _repo.mbox[patch].date.year,
+                '#LoC': _repo[patch].diff.lines,
+                '#Files': len(_repo[patch].diff.affected),
+                'DoW': _repo[patch].date.weekday(),
+                'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
+                'Month': _repo[patch].date.month,
+                'Year': _repo[patch].date.year,
                 'after Version': tag_of_patch,
                 'rcv': rcv,
                 'Kernel version': version
@@ -337,6 +338,7 @@ def evaluate_result():
         if 'com' in country \
                 or 'net' in country \
                 or 'org' in country \
+                or 'edu' in country \
                 or 'io' in country \
                 or 'name' in country \
                 or 'xyz' in country:

@@ -47,7 +47,7 @@ _threads = None
 
 
 def write_cell(file, string):
-    string = str(string).replace('\'', '"').replace('\n', '|').replace('\t', ' ').replace('=', '-')
+    string = str(string).replace('\'', '`').replace('"', '`').replace('\n', '|').replace('\t', ' ').replace('=', '-')
     file.write(string + '\t')
 
 
@@ -242,16 +242,21 @@ def evaluate_result():
             elif __check_for_applicability and patch_is_not_applicable(patch):
                 category += 'Not Applicable'
 
-        for (tag, timestamp, rc) in tags:
-            date_of_mail = parser.parse(email['Date'])
-            if timestamp > date_of_mail:
-                break
-            tag_of_patch = tag
-            if rc:
-                rcv = re.search('-rc[0-9]+', tag).group()[3:]
-            else:
-                rcv = 0
-            version = re.search('[0-9v\.]+', tag).group()
+        try:
+            for (tag, timestamp, rc) in tags:
+                date_of_mail = parser.parse(email['Date'])
+                if timestamp > date_of_mail:
+                    break
+                tag_of_patch = tag
+                if rc:
+                    rcv = re.search('-rc[0-9]+', tag).group()[3:]
+                else:
+                    rcv = 0
+                version = re.search('[0-9v\.]+', tag).group()
+        except ValueError:
+            rcv = 'error'
+            tag_of_patch = 'error'
+            version = 'error'
 
         try:
             result_patch_data.append({

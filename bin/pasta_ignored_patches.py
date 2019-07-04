@@ -243,8 +243,8 @@ def evaluate_result():
                 category += 'Not Applicable'
 
         try:
+            date_of_mail = parser.parse(email['Date'])
             for (tag, timestamp, rc) in tags:
-                date_of_mail = parser.parse(email['Date'])
                 if timestamp > date_of_mail:
                     break
                 tag_of_patch = tag

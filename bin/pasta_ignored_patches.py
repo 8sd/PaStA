@@ -132,7 +132,7 @@ def is_single_patch_ignored(patch):
         _statistic['foreign response'].add(patch)
         return False
 
-    if 'linux-next' in patch_mail['Subject'] or 'git pull' in patch_mail['Subject'].lower():
+    if 'linux-next' in patch_mail.mail_subject or 'git pull' in patch_mail.mail_subject.lower():
         _statistic['process'].add(patch)
         return None
 

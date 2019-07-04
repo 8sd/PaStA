@@ -92,18 +92,8 @@ def write_and_print_statistic():
             log.info(str(key) + ': ' + value)
         elif type(value) is set:
             log.info(str(key) + ': ' + str(len(value)))
-            if len(value) < 100000:
-                f = open(file_name, 'w')
-                for i in value:
-                    f.write(str(i) + '\n')
-                f.close()
         elif type(value) is dict:
             log.info(str(key) + ': ' + str(len(value)))
-            if len(value) < 100000:
-                f = open(file_name, 'w')
-                for k, v in value.items():
-                    f.write(str(k) + '\t' + str(v) + '\n')
-                f.close()
         else:
             log.info(str(key) + ': ' + str(value))
 
@@ -413,7 +403,7 @@ def ignored_patches(config, prog, argv):
 
     _statistic['analyzed patches'] = _patches
 
-    # write_and_print_statistic()
+    write_and_print_statistic()
     evaluate_result()
 
     return True

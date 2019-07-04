@@ -37,6 +37,7 @@ _statistic = {
 
     'too old': set(),
     'foreign response': set(),
+    'process': set(),
 
     'key error': set(),
     'error patch series': set(),
@@ -131,6 +132,10 @@ def is_single_patch_ignored(patch):
         _statistic['foreign response'].add(patch)
         return False
 
+    if 'linux-next' in patch_mail['Subject'] or 'git pull' in patch_mail['Subject'].lower():
+        _statistic['process'].add(patch)
+        return None
+
     _statistic['ignored'].add(patch)
     return True
 
@@ -184,6 +189,11 @@ def analyze_patch(patch):
     for patch in patches:
         ignored = is_single_patch_ignored(patch)
         if ignored is None:
+            try:
+                _statistic['all patches'].remove(patch)
+            except KeyError:
+                pass
+
             continue
         if not ignored:
             _statistic['not ignored patch groups'] |= patches
@@ -221,16 +231,12 @@ def evaluate_result():
     for patch in tqdm(patches_sorted):
         email = _repo.mbox.get_messages(patch)[0]
         author = email['From'].replace('\'', '"')
-        if 'linux-next' in email['Subject']:  # Category
-            category = 'Linux next'
-        elif 'git pull' in email['Subject'].lower():
-            category = 'Pull Request'
-        else:
-            category = ''
-            if __check_for_wrong_maintainer and patch_is_sent_to_wrong_maintainer(patch):
-                category += 'Wrong Maintainer '
-            elif __check_for_applicability and patch_is_not_applicable(patch):
-                category += 'Not Applicable'
+
+        category = ''
+        if __check_for_wrong_maintainer and patch_is_sent_to_wrong_maintainer(patch):
+            category += 'Wrong Maintainer '
+        elif __check_for_applicability and patch_is_not_applicable(patch):
+            category += 'Not Applicable'
 
         try:
             date_of_mail = parser.parse(email['Date'])

@@ -246,10 +246,10 @@ def evaluate_result():
                 tag_of_patch = tag
                 if rc:
                     rcv = re.search('-rc[0-9]+', tag).group()[3:]
-                    version = re.search('[0-9v\.]+', tag).group()
+                    version = re.search('v[0-9]+\.', tag).group() + '%02d' % int(re.search('\.[0-9]+', tag).group()[1:])
                 else:
                     rcv = 0
-                    version = re.search('v[0-9]+\.', tag).group() + str(int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
+                    version = re.search('v[0-9]+\.', tag).group() + '%02d' % (int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
                     # increment version of release since it is the merge window of the next version
         except ValueError:
             rcv = 'error'

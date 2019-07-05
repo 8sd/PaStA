@@ -303,7 +303,11 @@ def evaluate_result():
 
     _log.info('Evaluating authors…')
     for author in tqdm(all_authors):
-        domain = re.search('@[\w\-\.]+', author).group()[1:]
+        try:
+            domain = re.search('@[\w\-\.]+', author).group()[1:]
+        except:
+            domain = 'error.error'
+            _log.warning(author)
 
         company = domain
         if 'gmail.com' in company or 'gmx.' in company or 'outlook.' in company:
@@ -337,15 +341,19 @@ def evaluate_result():
         elif 'zytor.com' in company:
             company = 'Zytor'
 
-        country = re.findall('\.[\w]+', domain)[-1][1:]
-        if 'com' in country \
-                or 'net' in country \
-                or 'org' in country \
-                or 'edu' in country \
-                or 'io' in country \
-                or 'name' in country \
-                or 'xyz' in country:
-            country = ''
+        try:
+            country = re.findall('\.[\w]+', domain)[-1][1:]
+            if 'com' in country \
+                    or 'net' in country \
+                    or 'org' in country \
+                    or 'edu' in country \
+                    or 'io' in country \
+                    or 'name' in country \
+                    or 'xyz' in country:
+                country = ''
+        except:
+            _log.warning(author)
+            country='error'
 
         name = re.search('\w[\w\s.-]+\w', author)
         if name is None:

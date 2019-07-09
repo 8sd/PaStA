@@ -13,11 +13,15 @@ the COPYING file in the top-level directory.
 import re
 import datetime
 import subprocess
+import pickle
+import os
 
 from logging import getLogger
 from anytree import LevelOrderIter
 from tqdm import tqdm
 from dateutil import parser
+
+import pandas as pd
 
 import tools.gender.gender_guesser.detector as gender
 import tools.ethnicity.ethnicity.ethnicity as ethnicity
@@ -41,10 +45,12 @@ _statistic = {
 
     'key error': set(),
     'error patch series': set(),
-    'key error patch set': set()
+    'key error patch set': set(),
+    'error get maintainer': set()
 }
 _patches = None
 _threads = None
+__last_tag = None
 
 
 def write_cell(file, string):
@@ -63,21 +69,22 @@ def write_dict_list(_list, name):
         f.write('\n')
 
 
-def patch_is_sent_to_wrong_maintainer(patch):
-    affected = _repo[patch].diff.affected
-    maintainers = set()
+def write_dict_to_file_as_pandas(_list, name):
+    if not isinstance(_list, list):
+        raise TypeError
 
-# TODO: Check out for month of submission
-    for file in affected:
-        get_maintainer = subprocess.Popen(['perl', 'scripts/get_maintainer.pl', file], cwd='resources/linux/repo/',
-                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        get_maintainer_out = get_maintainer.communicate()[0]
-        maintainers |= set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out.decode("utf-8")))
-        # Maybe we ought to check if there is one correct maintainer per file?
+    df = pd.DataFrame(_list)
+    pickle.dump(df, open(name, 'wb'))
 
-    for maintainer in maintainers:
-        if maintainer not in _repo.mbox.get_messages(patch)[0]['To']:
-            return True
+
+def patch_is_sent_to_wrong_maintainer(maintainers, patch):
+    if maintainers:
+        for maintainer in maintainers:
+            if maintainer not in _repo.mbox.get_messages(patch)[0]['To'] and \
+                    maintainer not in _repo.mbox.get_messages(patch)[0]['Cc']:
+                return True
+    else:
+        _statistic['error get maintainer'].add(patch)
     return False
 
 
@@ -202,9 +209,16 @@ def analyze_patch(patch):
     _statistic['ignored patch groups'] |= patches
 
 
+def patch_date_extractor(patch):
+    try:
+        return _repo[patch].date
+    except KeyError:
+        return datetime.datetime.utcnow()
+
+
 def evaluate_result():
     _log.info('Sorting ' + str(len(_statistic['all patches'])) + ' Patches…')
-    patches_sorted = sorted(_statistic['all patches'])
+    patches_sorted = sorted(_statistic['all patches'], key = lambda p: patch_date_extractor(p))
     _log.info('  ↪ done')
 
     all_authors = set()
@@ -219,24 +233,27 @@ def evaluate_result():
     # | sed 's/tag: //g' > ../tags
     _log.info('Loading Tags')
     tags = list()
+    patches_by_version = dict()
     tags_file = open('resources/linux/tags', 'r')
     for line in tags_file:
         tag = line.split('\t')[0]
         tags.append((tag, parser.parse(line.split('\t')[1][:-1]), 'rc' in line))
+
+        patches_by_version[tag] = set()
 
     tags = sorted(tags, key=lambda x: x[1])
     _log.info('  ↪ done')
     
     _log.info('Evaluating Patches…')
     for patch in tqdm(patches_sorted):
+        category = None
+        rcv = None
+        version = None
+        maintainers = None
+        lists = None
+        subsystems = None
         email = _repo.mbox.get_messages(patch)[0]
         author = email['From'].replace('\'', '"')
-
-        category = ''
-        if __check_for_wrong_maintainer and patch_is_sent_to_wrong_maintainer(patch):
-            category += 'Wrong Maintainer '
-        elif __check_for_applicability and patch_is_not_applicable(patch):
-            category += 'Not Applicable'
 
         try:
             date_of_mail = parser.parse(email['Date'])
@@ -251,10 +268,76 @@ def evaluate_result():
                     rcv = 0
                     version = re.search('v[0-9]+\.', tag).group() + '%02d' % (int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
                     # increment version of release since it is the merge window of the next version
+            patches_by_version[tag].add(patch)
         except ValueError:
             rcv = 'error'
             tag_of_patch = 'error'
             version = 'error'
+
+        try:
+            if tag_of_patch is 'error':
+                raise ValueError
+
+            global __last_tag
+            if __last_tag is not tag_of_patch:
+                __last_tag = tag_of_patch
+                _log.info('Checking out tag: ' + tag_of_patch)
+                _repo.repo.checkout('refs/tags/' + tag_of_patch)
+                #ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
+                #_repo.repo.checkout(ref)
+
+            affected_files = _repo[patch].diff.affected
+
+            get_maintainer = subprocess.Popen(['perl', '../../../tools/get_maintainer.pl', '--subsystem'] +
+                                              list(affected_files), cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', stdout=subprocess.PIPE,
+                                              stderr=subprocess.PIPE)
+            get_maintainer_pipes = get_maintainer.communicate()
+
+            get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
+
+            category = ''
+
+            maintainers = set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out))
+
+            if patch_is_sent_to_wrong_maintainer(maintainers, patch):
+                category += 'Wrong Maintainer '
+            if patch_is_not_applicable(patch):
+                category += 'Not Applicable'
+
+            maintainers = set()
+            lists = set()
+            subsystems = list()
+            for line in get_maintainer_out.split('\n'):
+                if '@' not in line:
+                    subsystems.append(line)
+                elif '<' in line and '>' in line:
+                    maintainers.add(line)
+                else:
+                    lists.add(line)
+            try:
+                subsystems.remove("THE REST")
+            except ValueError:
+                pass
+
+            try:
+                subsystems.remove("Buried alive in reporters")
+            except ValueError:
+                pass
+
+            try:
+                subsystems.remove('')
+            except ValueError:
+                pass
+
+        except KeyError:
+            pass
+        except ValueError:
+            pass
+
+        if email['cc'] is not None:
+            recipients = email['To'] + email['cc']
+        else:
+            recipients = email['To']
 
         try:
             result_patch_data.append({
@@ -266,15 +349,20 @@ def evaluate_result():
                 'category': category,
                 '#LoC': _repo[patch].diff.lines,
                 '#Files': len(_repo[patch].diff.affected),
+                '#recipients without lists': len(re.findall('<', recipients)),
+                '#recipients': len(re.findall('@', recipients)),
                 'DoW': _repo[patch].date.weekday(),
                 'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
                 'Month': _repo[patch].date.month,
                 'Year': _repo[patch].date.year,
                 'after version': tag_of_patch,
                 'rcv': rcv,
-                'kernel version': version
+                'kernel version': version,
+                'maintainers': maintainers,
+                'lists': lists,
+                'subsystems': subsystems
             })
-        except KeyError:
+        except:
             pass
 
         # Needed for author analysis
@@ -294,6 +382,7 @@ def evaluate_result():
         # End of author analysis
 
     write_dict_list(result_patch_data, 'patches.tsv')
+    write_dict_to_file_as_pandas(result_patch_data, 'patches.pkl')
     _log.info('  ↪ done')
 
     # author
@@ -378,6 +467,13 @@ def evaluate_result():
             'Ethnicity': ethnicity_result,
             'Gender': gender_result
         })
+
+    for v in patches_by_version.keys():
+        # Check out tag
+        for patch in patches_by_version[v]:
+            pass
+            # maintainer
+            # subsystem
 
     write_dict_list(result_author_data, 'authors.tsv')
     _log.info('  ↪ done')

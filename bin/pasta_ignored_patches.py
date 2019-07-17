@@ -294,8 +294,8 @@ def evaluate_result():
                 __last_tag = tag_of_patch
                 _log.info('Checking out tag: ' + tag_of_patch)
                 _repo.repo.checkout('refs/tags/' + tag_of_patch)
-                #ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
-                #_repo.repo.checkout(ref)
+                # ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
+                # _repo.repo.checkout(ref)
 
             affected_files = _repo[patch].diff.affected
 

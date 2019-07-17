@@ -264,6 +264,7 @@ def evaluate_result():
         subsystems = None
         email = _repo.mbox.get_messages(patch)[0]
         author = email['From'].replace('\'', '"')
+        mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
 
         try:
             date_of_mail = parser.parse(email['Date'])
@@ -370,7 +371,8 @@ def evaluate_result():
                 'kernel version': version,
                 'maintainers': maintainers,
                 'lists': lists,
-                'subsystems': subsystems
+                'subsystems': subsystems,
+                'mailTraffic': mail_traffic
             })
         except:
             pass

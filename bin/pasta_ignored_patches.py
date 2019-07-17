@@ -507,7 +507,7 @@ def ignored_patches(config, prog, argv):
     _config = config
 
     _repo = config.repo
-    f_cluster, _clusters = config.load_patch_groups(must_exist=True)
+    f_cluster, _clusters = config.load_cluster(must_exist=True)
     _clusters.optimize()
 
     _statistic['all patches'] = _clusters.get_untagged()

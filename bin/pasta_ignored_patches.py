@@ -510,8 +510,7 @@ def ignored_patches(config, prog, argv):
     f_cluster, _clusters = config.load_patch_groups(must_exist=True)
     _clusters.optimize()
 
-    _statistic['all patches'] = _clusters.get_tagged() | _clusters.get_untagged()
-    _statistic['upstream patches'] = _clusters.get_tagged()
+    _statistic['all patches'] = _clusters.get_untagged()
 
     _patches = _clusters.get_not_upstream_patches()
 

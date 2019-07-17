@@ -78,10 +78,20 @@ def write_dict_to_file_as_pandas(_list, name):
 
 
 def patch_is_sent_to_wrong_maintainer(maintainers, patch):
+    msgs = _repo.mbox.get_messages(patch)
+    if not msgs:
+        return False
+    msg = msgs[0]
+    if not msg:
+        return False
+
+    to = msg['To'] if msg['To'] else ''
+    cc = msg['Cc'] if msg['Cc'] else ''
+
     if maintainers:
         for maintainer in maintainers:
-            if maintainer not in _repo.mbox.get_messages(patch)[0]['To'] and \
-                    maintainer not in _repo.mbox.get_messages(patch)[0]['Cc']:
+            if maintainer not in to and \
+                    maintainer not in cc:
                 return True
     else:
         _statistic['error get maintainer'].add(patch)

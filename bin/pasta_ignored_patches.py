@@ -256,102 +256,102 @@ def evaluate_result():
     
     _log.info('Evaluating Patches…')
     for patch in tqdm(patches_sorted):
-        category = None
-        rcv = None
-        version = None
-        maintainers = None
-        lists = None
-        subsystems = None
-        email = _repo.mbox.get_messages(patch)[0]
-        author = email['From'].replace('\'', '"')
-        mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
-        first_mail_in_thread = _threads.get_thread(patch).name
-
         try:
-            date_of_mail = parser.parse(email['Date'])
-            for (tag, timestamp, rc) in tags:
-                if timestamp > date_of_mail:
-                    break
-                tag_of_patch = tag
-                if rc:
-                    rcv = re.search('-rc[0-9]+', tag).group()[3:]
-                    version = re.search('v[0-9]+\.', tag).group() + '%02d' % int(re.search('\.[0-9]+', tag).group()[1:])
-                else:
-                    rcv = 0
-                    version = re.search('v[0-9]+\.', tag).group() + '%02d' % (int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
-                    # increment version of release since it is the merge window of the next version
-            patches_by_version[tag].add(patch)
-        except ValueError:
-            rcv = 'error'
-            tag_of_patch = 'error'
-            version = 'error'
+            category = None
+            rcv = None
+            version = None
+            maintainers = None
+            lists = None
+            subsystems = None
+            email = _repo.mbox.get_messages(patch)[0]
+            author = email['From'].replace('\'', '"')
+            mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
+            first_mail_in_thread = _threads.get_thread(patch).name
 
-        try:
-            if tag_of_patch is 'error':
-                raise ValueError
-
-            global __last_tag
-            if __last_tag is not tag_of_patch:
-                __last_tag = tag_of_patch
-                _log.info('Checking out tag: ' + tag_of_patch)
-                _repo.repo.checkout('refs/tags/' + tag_of_patch)
-                # ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
-                # _repo.repo.checkout(ref)
-
-            affected_files = _repo[patch].diff.affected
-
-            get_maintainer = subprocess.Popen(['perl', '../../../tools/get_maintainer.pl', '--subsystem'] +
-                                              list(affected_files), cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', stdout=subprocess.PIPE,
-                                              stderr=subprocess.PIPE)
-            get_maintainer_pipes = get_maintainer.communicate()
-
-            get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
-
-            category = ''
-
-            maintainers = set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out))
-
-            if patch_is_sent_to_wrong_maintainer(maintainers, patch):
-                category += 'Wrong Maintainer '
-            if patch_is_not_applicable(patch):
-                category += 'Not Applicable'
-
-            maintainers = set()
-            lists = set()
-            subsystems = list()
-            for line in get_maintainer_out.split('\n'):
-                if '@' not in line:
-                    subsystems.append(line)
-                elif '<' in line and '>' in line:
-                    maintainers.add(line)
-                else:
-                    lists.add(line)
             try:
-                subsystems.remove("THE REST")
+                date_of_mail = parser.parse(email['Date'])
+                for (tag, timestamp, rc) in tags:
+                    if timestamp > date_of_mail:
+                        break
+                    tag_of_patch = tag
+                    if rc:
+                        rcv = re.search('-rc[0-9]+', tag).group()[3:]
+                        version = re.search('v[0-9]+\.', tag).group() + '%02d' % int(re.search('\.[0-9]+', tag).group()[1:])
+                    else:
+                        rcv = 0
+                        version = re.search('v[0-9]+\.', tag).group() + '%02d' % (int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
+                        # increment version of release since it is the merge window of the next version
+                patches_by_version[tag].add(patch)
+            except ValueError:
+                rcv = 'error'
+                tag_of_patch = 'error'
+                version = 'error'
+
+            try:
+                if tag_of_patch is 'error':
+                    raise ValueError
+
+                global __last_tag
+                if __last_tag is not tag_of_patch:
+                    __last_tag = tag_of_patch
+                    _log.info('Checking out tag: ' + tag_of_patch)
+                    _repo.repo.checkout('refs/tags/' + tag_of_patch)
+                    # ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
+                    # _repo.repo.checkout(ref)
+
+                affected_files = _repo[patch].diff.affected
+
+                get_maintainer = subprocess.Popen(['perl', '../../../tools/get_maintainer.pl', '--subsystem'] +
+                                                  list(affected_files), cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', stdout=subprocess.PIPE,
+                                                  stderr=subprocess.PIPE)
+                get_maintainer_pipes = get_maintainer.communicate()
+
+                get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
+
+                category = ''
+
+                maintainers = set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out))
+
+                if patch_is_sent_to_wrong_maintainer(maintainers, patch):
+                    category += 'Wrong Maintainer '
+                if patch_is_not_applicable(patch):
+                    category += 'Not Applicable'
+
+                maintainers = set()
+                lists = set()
+                subsystems = list()
+                for line in get_maintainer_out.split('\n'):
+                    if '@' not in line:
+                        subsystems.append(line)
+                    elif '<' in line and '>' in line:
+                        maintainers.add(line)
+                    else:
+                        lists.add(line)
+                try:
+                    subsystems.remove("THE REST")
+                except ValueError:
+                    pass
+
+                try:
+                    subsystems.remove("Buried alive in reporters")
+                except ValueError:
+                    pass
+
+                try:
+                    subsystems.remove('')
+                except ValueError:
+                    pass
+
+            except KeyError:
+                pass
             except ValueError:
                 pass
 
-            try:
-                subsystems.remove("Buried alive in reporters")
-            except ValueError:
-                pass
+            if email['cc'] is not None:
+                recipients = email['To'] + email['cc']
+            else:
+                recipients = email['To']
 
-            try:
-                subsystems.remove('')
-            except ValueError:
-                pass
-
-        except KeyError:
-            pass
-        except ValueError:
-            pass
-
-        if email['cc'] is not None:
-            recipients = email['To'] + email['cc']
-        else:
-            recipients = email['To']
-
-        try:
             result_patch_data.append({
                 'id': patch,
                 'subject': email['Subject'],
@@ -367,6 +367,7 @@ def evaluate_result():
                 'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
                 'Month': _repo[patch].date.month,
                 'Year': _repo[patch].date.year,
+                'timestamp': _repo[patch].date.timestamp(),
                 'after version': tag_of_patch,
                 'rcv': rcv,
                 'kernel version': version,

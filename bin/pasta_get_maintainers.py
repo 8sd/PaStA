@@ -26,6 +26,8 @@ _log = getLogger(__name__[-15:])
 _tag = ''
 _tags = ''
 
+get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separate', ',']
+
 def patch_date_extractor(patch):
     try:
         return _repo[patch].date
@@ -37,16 +39,14 @@ def run_scripts (patch_id):
     # run get maintainers
     try:
         patch_encoded = patch.encode('utf-8')
-        p = subprocess.Popen(
-            ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status'],
+        p = subprocess.Popen(get_maintainers_args,
             cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
             stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         get_maintainer_pipes = p.communicate(patch_encoded)
     except UnicodeEncodeError:
         try:
             diff = _repo[patch_id].diff
-            p = subprocess.Popen(
-                ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status'] + list(diff.affected),
+            p = subprocess.Popen(get_maintainers_args + list(diff.affected),
                 cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
                 stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
             get_maintainer_pipes = p.communicate()
@@ -61,22 +61,20 @@ def run_scripts (patch_id):
     reviewer = []
     lists = []
     subsystem_or_status = []
-    for line in get_maintainer_out.split('\n'):
-        if '@' in line:
-            if 'maintainer' in line:
-                maintainers.append(line)
-            elif 'supporter' in line:
-                supporter.append(line)
-            elif 'list' in line:
-                lists.append(line)
-            elif 'odd fixer' in line:
-                odd.append(line)
-            elif 'reviewer' in line:
-                reviewer.append(line)
-            else:
-                _log.warning(line)
+    lines = get_maintainer_out.split('\n')
+    for address in lines[0].split(','):
+        if 'maintainer' in address:
+            maintainers.append(address)
+        elif 'supporter' in address:
+            supporter.append(address)
+        elif 'list' in address:
+            lists.append(address)
+        elif 'odd fixer' in address:
+            odd.append(address)
+        elif 'reviewer' in address:
+            reviewer.append(address)
         else:
-            subsystem_or_status.append(line)
+            _log.warning(address)
 
     # run checkpatch
     return (patch_id, {'version': _tag, 'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd,
@@ -127,11 +125,10 @@ def get_maintainers(config, prog, argv):
 
     _log.info('Match patches and tags…')
     # parallel
-    p = Pool(processes=1, maxtasksperchild=1)
-    return_value = p.map(match_tag_patch, _patches, 10)
-    p.close()
-    p.join()
-    patches_by_version[return_value[0]].add(return_value[1])
+    p = Pool(processes=cpu_count(), maxtasksperchild=10)
+    return_value = p.map(match_tag_patch, tqdm(_patches), 10)
+    for tag, result in return_value:
+        patches_by_version[tag].add(result)
 
     result = dict()
     for tag in tags:
@@ -144,9 +141,14 @@ def get_maintainers(config, prog, argv):
         _tag = tag
 
         # parallel
-        for patch_id in patches_by_version[tag]:
-            return_value = run_scripts(patch_id)
-            result[return_value[0]] = return_value[1]
+        return_value = p.map(run_scripts, tqdm(patches_by_version[tag]), 10)
+        for patch, res in return_value:
+            result[patch] = res
 
     # save pkl
+    _log.info('Saving pickle…')
     pickle.dump(result, open('maintaiers.pkl', 'wb'))
+
+    _log.info('Cleaning up…')
+    p.close()
+    p.join()

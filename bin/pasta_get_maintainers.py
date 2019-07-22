@@ -127,9 +127,11 @@ def get_maintainers(config, prog, argv):
 
     _log.info('Match patches and tags…')
     # parallel
-    for patch in _patches:
-        return_value = match_tag_patch(patch)
-        patches_by_version[return_value[0]].add(return_value[1])
+    p = Pool(processes=1, maxtasksperchild=1)
+    return_value = p.map(match_tag_patch, _patches, 10)
+    p.close()
+    p.join()
+    patches_by_version[return_value[0]].add(return_value[1])
 
     result = dict()
     for tag in tags:

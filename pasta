@@ -31,6 +31,7 @@ from bin.pasta_check_connectivity import check_connectivity
 from bin.pasta_compare import compare
 from bin.pasta_compare_clusters import compare_clusters
 from bin.pasta_optimise_cluster import optimise_cluster
+from bin.pasta_get_maintainers import get_maintainers
 from bin.pasta_ignored_patches import ignored_patches
 from bin.pasta_rate import rate
 from bin.pasta_ripup import ripup
@@ -144,6 +145,8 @@ def main(argv):
         return check_connectivity(config, sub, argv)
     elif sub == 'compare':
         return compare(config, sub, argv)
+    elif sub == 'get_maintainers':
+        return get_maintainers(config, sub, argv)
     elif sub == 'ignored_patches':
         return ignored_patches(config, sub, argv)
     elif sub == 'rate':

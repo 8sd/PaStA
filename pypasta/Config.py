@@ -17,6 +17,7 @@ from enum import Enum
 from os.path import join, realpath, isfile, isdir, isabs
 from os import makedirs
 from logging import getLogger
+from datetime import datetime
 
 from .Cluster import Cluster
 from .Repository import Repository
@@ -210,8 +211,8 @@ class Config:
             try:
                 self.time_frame = parse_date_ymd(mbox['TIME_FRAME']).replace(tzinfo=tz.tzutc())
             except KeyError as e:
-                log.warning('Timeframe not defined in config')
-                self.time_frame = None
+                log.info('Timeframe not defined in config, using today')
+                self.time_frame = datetime.now()
 
             self.mbox_raw = list()
             for listname, f_mbox_raw in mbox_raw.items():

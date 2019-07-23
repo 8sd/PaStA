@@ -26,7 +26,10 @@ _log = getLogger(__name__[-15:])
 _tag = ''
 _tags = ''
 
+_analyzed_files = dict()
+
 get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
+
 
 def patch_date_extractor(patch):
     try:
@@ -34,91 +37,89 @@ def patch_date_extractor(patch):
     except KeyError:
         return datetime.datetime.utcnow()
 
-def run_scripts (patch_id):
-    patch = _repo.mbox.get_messages(patch_id)[0]._payload
-    # run get maintainers
-    try:
-        patch_encoded = patch.encode('utf-8')
-        p = subprocess.Popen(get_maintainers_args,
-            cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
-            stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        get_maintainer_pipes = p.communicate(patch_encoded)
-    except UnicodeEncodeError:
-        try:
-            diff = _repo[patch_id].diff
-            p = subprocess.Popen(get_maintainers_args + list(diff.affected),
-                cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
-                stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            get_maintainer_pipes = p.communicate()
-        except KeyError:
-            pass
+
+def execute_get_maintainers_per_file(file):
+    if file in _analyzed_files:
+        return _analyzed_files[file]
+    if file is '':
+        raise ValueError('File not found')
+
+    p = subprocess.Popen(get_maintainers_args + [file],
+                         cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
+                         stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    get_maintainer_pipes = p.communicate()
 
     get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
     if get_maintainer_out is '':
         error = get_maintainer_pipes[1].decode("utf-8")
         if 'not found' in error:
+            file = file[0:file.rfind('/')]
+            get_maintainer_out = execute_get_maintainers_per_file(file)
+    _analyzed_files[file] = get_maintainer_out
+    return get_maintainer_out
+
+
+def run_scripts (patch_id):
+    global _analyzed_files
+    subsystems_with_stati = set()
+    maintainers = set()
+    supporter = set()
+    odd = set()
+    reviewer = set()
+    lists = set()
+
+    for file in _repo[patch_id].diff.affected:
+        try:
+            out = execute_get_maintainers_per_file(file)
+        except ValueError:
             return patch_id, None
 
-    # parse output
-    maintainers = []
-    supporter = []
-    odd = []
-    reviewer = []
-    lists = []
-    subsystem_or_status = []
-    lines = get_maintainer_out.split('\n')
-    for address in lines[0].split(';;'):
-        if address is '':
-            continue
-        elif 'maintain' in address:
-            maintainers.append(address)
-        elif 'supporter' in address:
-            supporter.append(address)
-        elif 'list' in address:
-            lists.append(address)
-        elif 'odd fixer' in address:
-            odd.append(address)
-        elif 'reviewer' in address:
-            reviewer.append(address)
+        lines = out.split('\n')
 
-    try:
-        stati = lines[1].split(';;')
-        subsystems = lines[2].split(';;')
-    except:
-        print('#####patch_id')
-        print(str(patch_id))
-        print('#####get_maintainer_out')
-        print(str(get_maintainer_out))
-        print('#####')
-        stati = []
-        subsystems = []
+        for address in lines[0].split(';;'):
+            if address is '':
+                continue
+            elif 'maintain' in address:
+                maintainers.add(address)
+            elif 'supporter' in address:
+                supporter.add(address)
+            elif 'list' in address:
+                lists.add(address)
+            elif 'odd fixer' in address:
+                odd.add(address)
+            elif 'reviewer' in address:
+                reviewer.add(address)
 
-    subsystems_with_stati = []
-
-    t = ('THE REST', 'Buried alive in reporters')
-    subsystems_with_stati.append(t)
-    try:
-        subsystems.remove('THE REST')
-    except ValueError:
-        pass
-
-    try:
-        stati.remove('Buried alive in reporters')
-    except ValueError:
-        pass
-
-    try:
-        subsystems.remove('ABI/API')
-    except ValueError:
-        pass
-
-    for i in range(1, len(subsystems) + 1):
-        t = ()
         try:
-            t = subsystems[-i], stati[-i]
+            stati = lines[1].split(';;')
+            subsystems = lines[2].split(';;')
         except IndexError:
-            t = subsystems[-i], stati[0]
-        subsystems_with_stati.append(t)
+            pass
+
+        t = 'THE REST', 'Buried alive in reporters'
+        subsystems_with_stati.add(t)
+        try:
+            subsystems.remove('THE REST')
+        except ValueError:
+            pass
+
+        try:
+            stati.remove('Buried alive in reporters')
+        except ValueError:
+            pass
+
+        try:
+            subsystems.remove('ABI/API')
+        except ValueError:
+            pass
+
+        for i in range(1, len(subsystems) + 1):
+            t = ()
+            try:
+                t = subsystems[-i], stati[-i]
+            except IndexError:
+                t = subsystems[-i], stati[0]
+            subsystems_with_stati.add(t)
 
     return patch_id, {'version': _tag, 'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd,
                       'reviewer': reviewer, 'lists': lists, 'subsystem': subsystems_with_stati}
@@ -146,6 +147,7 @@ def get_maintainers(config, prog, argv):
     global _repo
     global _tag
     global _tags
+    global _analyzed_files
 
     _config = config
 
@@ -185,6 +187,7 @@ def get_maintainers(config, prog, argv):
         _log.info('Checking out tag: ' + tag)
         _repo.repo.checkout('refs/tags/' + tag)
         _tag = tag
+        _analyzed_files = dict()
 
         # parallel
         return_value = p.map(run_scripts, tqdm(patches_by_version[tag]), 10)

@@ -75,10 +75,33 @@ def run_scripts (patch_id):
             reviewer.append(address)
         else:
             _log.warning(address)
+    stati = lines[1].split(',')
+    subsystems = lines[2].split(',')
 
-    # run checkpatch
-    return (patch_id, {'version': _tag, 'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd,
-                        'reviewer': reviewer, 'lists': lists})
+    subsystems_with_stati = []
+
+    t = ('THE REST', 'Buried alive in reporters')
+    subsystems_with_stati.append(t)
+    try:
+        subsystems.remove('THE REST')
+    except KeyError:
+        pass
+
+    try:
+        stati.remove('Buried alive in reporters')
+    except KeyError:
+        pass
+
+    for i in range(1, len(subsystems) + 1):
+        t = ()
+        try:
+            t = subsystems[-i], stati[-i]
+        except IndexError:
+            t = subsystems[-i], stati[0]
+        subsystems_with_stati.append(t)
+
+    return patch_id, {'version': _tag, 'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd,
+                      'reviewer': reviewer, 'lists': lists, 'subsystem': subsystems_with_stati}
 
 
 def match_tag_patch (patch_id):

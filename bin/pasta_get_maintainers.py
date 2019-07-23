@@ -104,14 +104,14 @@ def run_scripts (patch_id):
                       'reviewer': reviewer, 'lists': lists, 'subsystem': subsystems_with_stati}
 
 
-def match_tag_patch (patch_id):
+def match_tag_patch(patch_id):
     date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
     tag_of_patch = ''
     for (tag, timestamp) in _tags:
         if timestamp > date_of_mail:
             break
         tag_of_patch = tag
-    return (tag_of_patch, patch_id)
+    return tag_of_patch, patch_id
 
 
 def get_maintainers(config, prog, argv):

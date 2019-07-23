@@ -26,7 +26,7 @@ _log = getLogger(__name__[-15:])
 _tag = ''
 _tags = ''
 
-get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separate', ',']
+get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ',']
 
 def patch_date_extractor(patch):
     try:

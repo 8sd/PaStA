@@ -20,6 +20,7 @@ from logging import getLogger
 from anytree import LevelOrderIter
 from tqdm import tqdm
 from dateutil import parser
+from multiprocessing import Pool, cpu_count
 
 import pandas as pd
 
@@ -225,162 +226,90 @@ def patch_date_extractor(patch):
     except KeyError:
         return datetime.datetime.utcnow()
 
+def gather_data_of_single_patch(patch):
+    category = None
+    email = _repo.mbox.get_messages(patch)[0]
+    author = email['From'].replace('\'', '"')
+    mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
+    first_mail_in_thread = _threads.get_thread(patch).name
+
+    try:
+        date_of_mail = parser.parse(email['Date'])
+
+        tag = '' #TODO use get_maintainers.pkl
+        rc = 'rc' in tag
+
+        if rc:
+            rcv = re.search('-rc[0-9]+', tag).group()[3:]
+            version = re.search('v[0-9]+\.', tag).group() + '%02d' % int(re.search('\.[0-9]+', tag).group()[1:])
+        else:
+            rcv = 0
+            version = re.search('v[0-9]+\.', tag).group() + '%02d' % (
+                    int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
+    except AttributeError:
+        rcv = 'error'
+        version = 'error'
+
+    # use get_maintainers pkl
+    maintainers = ''
+    lists = ''
+    subsystems = ''
+
+    if email['cc'] is not None:
+        recipients = email['To'] + email['cc']
+    else:
+        recipients = email['To']
+
+    return {
+        'id': patch,
+        'subject': email['Subject'],
+        'from': author,
+        'ignored': patch in _statistic['ignored patch groups'],
+        'upstream': patch in _statistic['upstream patches'],
+        'category': category,
+        '#LoC': _repo[patch].diff.lines,
+        '#Files': len(_repo[patch].diff.affected),
+        '#recipients without lists': len(re.findall('<', recipients)),
+        '#recipients': len(re.findall('@', recipients)),
+        'DoW': _repo[patch].date.weekday(),
+        'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
+        'Month': _repo[patch].date.month,
+        'Year': _repo[patch].date.year,
+        'timestamp': _repo[patch].date.timestamp(),
+        'after version': tag,
+        'rcv': rcv,
+        'kernel version': version,
+        'maintainers': maintainers,
+        'lists': lists,
+        'subsystems': subsystems,
+        'mailTraffic': mail_traffic,
+        'firstMailInThread': first_mail_in_thread
+    }
+
 
 def evaluate_result():
-    _log.info('Sorting ' + str(len(_statistic['all patches'])) + ' Patches…')
-    patches_sorted = sorted(_statistic['all patches'], key = lambda p: patch_date_extractor(p))
-    _log.info('  ↪ done')
-
     all_authors = set()
     author_ignored = dict()
     author_not_ignored = dict()
-    # patches_sorted = sorted(_statistic['all patches'])
-
     result_patch_data = list()
 
     # Use this script to generate ne new tags file
     # git log --tags --simplify-by-decoration --pretty='format:%D%x09%cD' | awk -F '\t' '/tag/ {print $1"\t"$2}' \
     # | sed 's/tag: //g' > ../tags
-    _log.info('Loading Tags')
-    tags = list()
-    patches_by_version = dict()
-    tags_file = open('resources/linux/tags', 'r')
-    for line in tags_file:
-        tag = line.split('\t')[0]
-        tags.append((tag, parser.parse(line.split('\t')[1][:-1]), 'rc' in line))
-
-        patches_by_version[tag] = set()
-
-    tags = sorted(tags, key=lambda x: x[1])
-    _log.info('  ↪ done')
-    
     _log.info('Evaluating Patches…')
-    for patch in tqdm(patches_sorted):
-        try:
-            category = None
-            rcv = None
-            version = None
-            maintainers = None
-            lists = None
-            subsystems = None
-            email = _repo.mbox.get_messages(patch)[0]
-            author = email['From'].replace('\'', '"')
-            mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
-            first_mail_in_thread = _threads.get_thread(patch).name
+    # do parallelized stuff
+    p = Pool(processes=cpu_count(), maxtasksperchild=10)
+    return_value = p.map(gather_data_of_single_patch, tqdm(_statistic['all patches']), 10)
 
-            try:
-                date_of_mail = parser.parse(email['Date'])
-                for (tag, timestamp, rc) in tags:
-                    if timestamp > date_of_mail:
-                        break
-                    tag_of_patch = tag
-                    if rc:
-                        rcv = re.search('-rc[0-9]+', tag).group()[3:]
-                        version = re.search('v[0-9]+\.', tag).group() + '%02d' % int(re.search('\.[0-9]+', tag).group()[1:])
-                    else:
-                        rcv = 0
-                        version = re.search('v[0-9]+\.', tag).group() + '%02d' % (int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
-                        # increment version of release since it is the merge window of the next version
-                patches_by_version[tag].add(patch)
-            except ValueError:
-                rcv = 'error'
-                tag_of_patch = 'error'
-                version = 'error'
+    write_dict_list(return_value, 'patches.tsv')
+    write_dict_to_file_as_pandas(return_value, 'patches.pkl')
+    _log.info('  ↪ done')
 
-            try:
-                if tag_of_patch is 'error':
-                    raise ValueError
-
-                global __last_tag
-                if __last_tag is not tag_of_patch:
-                    __last_tag = tag_of_patch
-                    _log.info('Checking out tag: ' + tag_of_patch)
-                    _repo.repo.checkout('refs/tags/' + tag_of_patch)
-                    # ref = _repo.repo.lookup_reference('refs/tags/' + tag_of_patch)
-                    # _repo.repo.checkout(ref)
-
-                affected_files = _repo[patch].diff.affected
-
-                get_maintainer = subprocess.Popen(['perl', '../../../tools/get_maintainer.pl', '--subsystem'] +
-                                                  list(affected_files), cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', stdout=subprocess.PIPE,
-                                                  stderr=subprocess.PIPE)
-                get_maintainer_pipes = get_maintainer.communicate()
-
-                get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
-
-                category = ''
-
-                maintainers = set(re.findall(r'<[a-z\.\-]+@[a-z\.\-]+>', get_maintainer_out))
-
-                if patch_is_sent_to_wrong_maintainer(maintainers, patch):
-                    category += 'Wrong Maintainer '
-                if patch_is_not_applicable(patch):
-                    category += 'Not Applicable'
-
-                maintainers = set()
-                lists = set()
-                subsystems = list()
-                for line in get_maintainer_out.split('\n'):
-                    if '@' not in line:
-                        subsystems.append(line)
-                    elif '<' in line and '>' in line:
-                        maintainers.add(line)
-                    else:
-                        lists.add(line)
-                try:
-                    subsystems.remove("THE REST")
-                except ValueError:
-                    pass
-
-                try:
-                    subsystems.remove("Buried alive in reporters")
-                except ValueError:
-                    pass
-
-                try:
-                    subsystems.remove('')
-                except ValueError:
-                    pass
-
-            except KeyError:
-                pass
-            except ValueError:
-                pass
-
-            if email['cc'] is not None:
-                recipients = email['To'] + email['cc']
-            else:
-                recipients = email['To']
-
-            result_patch_data.append({
-                'id': patch,
-                'subject': email['Subject'],
-                'from': author,
-                'ignored': patch in _statistic['ignored patch groups'],
-                'upstream': patch in _statistic['upstream patches'],
-                'category': category,
-                '#LoC': _repo[patch].diff.lines,
-                '#Files': len(_repo[patch].diff.affected),
-                '#recipients without lists': len(re.findall('<', recipients)),
-                '#recipients': len(re.findall('@', recipients)),
-                'DoW': _repo[patch].date.weekday(),
-                'ToD': _repo[patch].date.hour + (_repo[patch].date.minute / 60),
-                'Month': _repo[patch].date.month,
-                'Year': _repo[patch].date.year,
-                'timestamp': _repo[patch].date.timestamp(),
-                'after version': tag_of_patch,
-                'rcv': rcv,
-                'kernel version': version,
-                'maintainers': maintainers,
-                'lists': lists,
-                'subsystems': subsystems,
-                'mailTraffic': mail_traffic,
-                'firstMailInThread': first_mail_in_thread
-            })
-        except:
-            pass
-
-        # Needed for author analysis
+    # Needed for author analysis
+    _log.info('Collecting authors…')
+    for patch in tqdm(_statistic['all patches']):
+        email = _repo.mbox.get_messages(patch)[0]
+        author = email['From'].replace('\'', '"')
         if author in all_authors:
             if patch in _statistic['ignored patch groups']:
                 author_ignored[author] += 1
@@ -394,16 +323,13 @@ def evaluate_result():
             else:
                 author_ignored[author] = 0
                 author_not_ignored[author] = 1
-        # End of author analysis
-
-    write_dict_list(result_patch_data, 'patches.tsv')
-    write_dict_to_file_as_pandas(result_patch_data, 'patches.pkl')
-    _log.info('  ↪ done')
+    # End of author analysis
 
     # author
     result_author_data = list()
     gender_detector = gender.Detector()
     ethnicity_detector = ethnicity.Ethnicity().make_dicts()
+    _log.info('  ↪ done')
 
     _log.info('Evaluating authors…')
     for author in tqdm(all_authors):
@@ -482,13 +408,6 @@ def evaluate_result():
             'Ethnicity': ethnicity_result,
             'Gender': gender_result
         })
-
-    for v in patches_by_version.keys():
-        # Check out tag
-        for patch in patches_by_version[v]:
-            pass
-            # maintainer
-            # subsystem
 
     write_dict_list(result_author_data, 'authors.tsv')
     _log.info('  ↪ done')

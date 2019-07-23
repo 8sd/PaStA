@@ -227,11 +227,17 @@ def patch_date_extractor(patch):
         return datetime.datetime.utcnow()
 
 def gather_data_of_single_patch(patch):
+    global _maintainers
+
     category = None
     email = _repo.mbox.get_messages(patch)[0]
     author = email['From'].replace('\'', '"')
     mail_traffic = sum(1 for _ in LevelOrderIter(_threads.get_thread(patch)))
     first_mail_in_thread = _threads.get_thread(patch).name
+    maintainers = None
+    helping = None
+    lists = None
+    subsystems = None
 
     try:
         date_of_mail = parser.parse(email['Date'])
@@ -251,9 +257,12 @@ def gather_data_of_single_patch(patch):
         version = 'error'
 
     # use get_maintainers pkl
-    maintainers = ''
-    lists = ''
-    subsystems = ''
+    get_maintainers = _maintainers[patch]
+    if (get_maintainers is not None):
+        maintainers = get_maintainers['maintainers']
+        helping = get_maintainers['supporter'] | get_maintainers['odd fixer'] | get_maintainers['reviewer']
+        lists = get_maintainers['lists']
+        subsystems = get_maintainers['subsystem']
 
     if email['cc'] is not None:
         recipients = email['To'] + email['cc']
@@ -280,6 +289,7 @@ def gather_data_of_single_patch(patch):
         'rcv': rcv,
         'kernel version': version,
         'maintainers': maintainers,
+        'helping': helping,
         'lists': lists,
         'subsystems': subsystems,
         'mailTraffic': mail_traffic,
@@ -425,6 +435,8 @@ def ignored_patches(config, prog, argv):
     global _statistic
     global _patches
     global _threads
+    global _maintainers
+    _maintainers = pickle._load(open('maintainers.pkl', 'rb'))
 
     _config = config
 
@@ -439,7 +451,6 @@ def ignored_patches(config, prog, argv):
     _statistic['upstream patches'] = _statistic['all patches'] - _patches
 
     _threads = _repo.mbox.load_threads()
-
     _log.info('Analyzing patches…')
     for patch in tqdm(_patches):
         analyze_patch(patch)

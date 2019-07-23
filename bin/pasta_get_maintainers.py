@@ -132,8 +132,12 @@ def match_tag_patch(patch_id):
         date_of_mail = datetime.datetime.utcnow()
     tag_of_patch = ''
     for (tag, timestamp) in _tags:
-        if timestamp > date_of_mail:
-            break
+        try:
+            if timestamp > date_of_mail:
+                break
+        except:
+            if timestamp.replace(tzinfo=None) > date_of_mail.replace(tzinfo=None):
+                break
         tag_of_patch = tag
     return tag_of_patch, patch_id
 

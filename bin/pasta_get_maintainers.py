@@ -26,7 +26,7 @@ _log = getLogger(__name__[-15:])
 _tag = ''
 _tags = ''
 
-get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ',']
+get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
 
 def patch_date_extractor(patch):
     try:
@@ -54,6 +54,11 @@ def run_scripts (patch_id):
             pass
 
     get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
+    if get_maintainer_out is '':
+        error = get_maintainer_pipes[1].decode("utf-8")
+        if 'not found' in error:
+            return patch_id, None
+
     # parse output
     maintainers = []
     supporter = []
@@ -62,8 +67,10 @@ def run_scripts (patch_id):
     lists = []
     subsystem_or_status = []
     lines = get_maintainer_out.split('\n')
-    for address in lines[0].split(','):
-        if 'maintainer' in address:
+    for address in lines[0].split(';;'):
+        if address is '':
+            continue
+        elif 'maintain' in address:
             maintainers.append(address)
         elif 'supporter' in address:
             supporter.append(address)
@@ -73,10 +80,18 @@ def run_scripts (patch_id):
             odd.append(address)
         elif 'reviewer' in address:
             reviewer.append(address)
-        else:
-            _log.warning(address)
-    stati = lines[1].split(',')
-    subsystems = lines[2].split(',')
+
+    try:
+        stati = lines[1].split(';;')
+        subsystems = lines[2].split(';;')
+    except:
+        print('#####patch_id')
+        print(str(patch_id))
+        print('#####get_maintainer_out')
+        print(str(get_maintainer_out))
+        print('#####')
+        stati = []
+        subsystems = []
 
     subsystems_with_stati = []
 
@@ -84,12 +99,17 @@ def run_scripts (patch_id):
     subsystems_with_stati.append(t)
     try:
         subsystems.remove('THE REST')
-    except KeyError:
+    except ValueError:
         pass
 
     try:
         stati.remove('Buried alive in reporters')
-    except KeyError:
+    except ValueError:
+        pass
+
+    try:
+        subsystems.remove('ABI/API')
+    except ValueError:
         pass
 
     for i in range(1, len(subsystems) + 1):
@@ -105,7 +125,10 @@ def run_scripts (patch_id):
 
 
 def match_tag_patch(patch_id):
-    date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
+    try:
+        date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
+    except:
+        date_of_mail = datetime.datetime.now()
     tag_of_patch = ''
     for (tag, timestamp) in _tags:
         if timestamp > date_of_mail:

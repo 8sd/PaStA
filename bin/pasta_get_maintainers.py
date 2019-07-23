@@ -129,7 +129,7 @@ def match_tag_patch(patch_id):
     try:
         date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
     except:
-        date_of_mail = datetime.datetime.now()
+        date_of_mail = datetime.datetime.utcnow()
     tag_of_patch = ''
     for (tag, timestamp) in _tags:
         if timestamp > date_of_mail:

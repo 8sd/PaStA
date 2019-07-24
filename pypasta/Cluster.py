@@ -286,6 +286,14 @@ class Cluster:
             res |= group
         return res
 
+    def get_upstream_patches (self):
+        res = set ()
+        for group in self.iter_untagged():
+            repres = list(group)[0]
+            if self.get_tagged(repres):
+                res |= group
+        return res
+
     @staticmethod
     def from_file(filename, must_exist=False):
         def split_elements(elems):

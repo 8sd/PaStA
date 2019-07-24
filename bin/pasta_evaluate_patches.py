@@ -248,13 +248,14 @@ def get_author_of_msg(msg):
     return email['From']
 
 
-def patch_has_foreign_response(thread, patch):
-    if len(thread.get_thread(patch).children) == 0:
+def patch_has_foreign_response(threads, patch):
+    thread = threads.get_thread(patch)
+    if len(thread.children) == 0:
         return False  # If there is no response the check is trivial
 
     author = get_author_of_msg(patch)
 
-    for mail in list(LevelOrderIter(thread.get_thread(patch))):
+    for mail in list(LevelOrderIter(thread)):
         this_author = get_author_of_msg(mail.name)
         if this_author is not author:
             return True
@@ -262,11 +263,6 @@ def patch_has_foreign_response(thread, patch):
 
 
 def is_single_patch_ignored(threads, patch):
-    try:
-        patch_mail = _repo[patch]
-    except KeyError:
-        return False, patch
-
     if patch_has_foreign_response(threads, patch):
         return False, patch
 
@@ -293,6 +289,70 @@ def get_ignored(threads):
 
     pickle.dump(ignored, open('resources/linux/ignored.pkl', 'wb'))
     return ignored
+
+
+def check_wrong_maintainer_patch(subsystems, patch):
+    msgs = _repo.mbox.get_messages(patch)
+    if not msgs:
+        return False
+    msg = msgs[0]
+    if not msg:
+        return False
+
+    to = msg['To'] if msg['To'] else ''
+    cc = msg['Cc'] if msg['Cc'] else ''
+
+    recipients = (to + cc).split(',')
+    recipients_clean = []
+    for recipient in recipients:
+        recipients_clean.append(recipient.replace('\n', '').replace(' ', ''))
+
+    subsystem = subsystems[patch]
+    if subsystem is None:
+        return None, None
+
+    min = False
+    max = True
+
+    for maintainer in subsystem['maintainers']:
+        if maintainer in recipients_clean:
+            min = True
+
+    for maintainer in subsystem['maintainers'] | subsystem['supporter'] | subsystem['odd fixer'] | subsystem['reviewer']:
+        if maintainer not in recipients_clean:
+            max = False
+
+    if max:
+        return None, None
+    if min:
+        return None, patch
+    return patch, None
+
+
+def check_wrong_maintainer(patches, subsystems):
+    p = get_pool()
+    f = partial(check_wrong_maintainer_patch,subsystems)
+    return_value = p.map(f, patches)
+
+    min = set()
+    max = set()
+
+    for res in return_value:
+        min.add(res[0])
+        max.add(res[1])
+
+    try:
+        min.remove(None)
+    except KeyError:
+        pass
+
+    try:
+        max.remove(None)
+    except KeyError:
+        pass
+
+    pickle.dump((min, max), open('resources/linux/check_maintainer.pkl', 'wb'))
+    return min, max
 
 
 def evaluate_patches(config, prog, argv):
@@ -363,6 +423,14 @@ def evaluate_patches(config, prog, argv):
             ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
         except FileNotFoundError:
             ignored_patches = get_ignored(threads)
+
+    _log.info('Identify patches sent to wrong maintainers…')  ######################################### Wrong Maintainer
+    if 'no-check-maintainer' in argv:
+        wrong_maintainer = None
+    elif 'check-maintainer' in argv or not os.path.isfile('resources/linux/check_maintainer.pkl'):
+        wrong_maintainer = check_wrong_maintainer(patches, subsystems)
+    else:
+        wrong_maintainer = pickle.load('resources/linux/check_maintainer.pkl')
 
     pass
 

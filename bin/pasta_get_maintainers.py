@@ -235,7 +235,7 @@ def get_maintainers(config, prog, argv):
 
     # save pkl
     _log.info('Saving pickle…')
-    pickle.dump(result, open('maintainers.pkl', 'wb'))
+    pickle.dump(result, open('resources/linux/maintainers.pkl', 'wb'))
 
     _log.info('Cleaning up…')
     p.close()

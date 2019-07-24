@@ -186,15 +186,19 @@ def get_maintainer_patch(patch_id):
 def get_maintainers (patches_by_version):
     result = dict()
     for tag in patches_by_version.keys():
-        if len(patches_by_version[tag]) == 0:
-            continue
-        # checkout git
-        _log.info('Checking out tag: ' + tag)
-        _repo.repo.checkout('refs/tags/' + tag)
+        try:
+            return_value = pickle.load(open('resources/linux/maintainers.' + tag + '.pkl', 'rb'))
+        except FileNotFoundError:
+            if len(patches_by_version[tag]) == 0:
+                continue
+            # checkout git
+            _log.info('Checking out tag: ' + tag)
+            _repo.repo.checkout('refs/tags/' + tag)
 
-        # parallel
-        p = get_pool()
-        return_value = p.map(get_maintainer_patch, tqdm(patches_by_version[tag]), 10)
+            # parallel
+            p = get_pool()
+            return_value = p.map(get_maintainer_patch, tqdm(patches_by_version[tag]), 10)
+            pickle.dump(return_value,  open('resources/linux/maintainers.' + tag + '.pkl', 'wb'))
         for patch, res in return_value:
             result[patch] = res
 

@@ -38,6 +38,8 @@ def build_tag_cache ():
         tags.append((tag, parser.parse(line.split('\t')[1][:-1])))
         patches_by_version[tag] = set()
 
+    tags = sorted(tags, key=lambda x: x[1])
+
     pickle.dump((tags, patches_by_version), open('resources/linux/tags.pkl', 'wb'))
     return tags, patches_by_version
 

@@ -12,9 +12,11 @@ the COPYING file in the top-level directory.
 import datetime
 import os
 import pickle
+import re
 import subprocess
 
 
+from anytree import LevelOrderIter
 from dateutil import parser
 from functools import partial
 from logging import getLogger
@@ -27,6 +29,9 @@ _config = None
 _log = getLogger(__name__[-15:])
 _p = None
 _repo = None
+_stats = False
+
+_analyzed_patches = set()
 
 
 get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
@@ -108,7 +113,7 @@ def get_maintainer_file(file):
             _log.warning('Please place get_maintainers.pl in /tools')
             raise ReferenceError('/tools/get_maintainer.pl is missing')
         else:
-            raise ValueError('Empty Output')
+             raise ValueError('Empty Output, Error: ' + error)
     return get_maintainer_out
 
 
@@ -197,6 +202,95 @@ def get_maintainers (patches_by_version):
     return result
 
 
+def get_versions_of_patch(patch):
+    return _clusters.get_untagged(patch)
+
+
+def is_part_of_patch_set(patch):
+    try:
+        return re.search(r'[0-9]+/[0-9]+\]', _repo[patch].mail_subject) is not None
+    except KeyError:
+        return False
+
+
+def get_patch_set(threads, patch):
+    result = set()
+    result.add(patch)
+    thread = threads.get_thread(patch)
+
+    if thread.children is None:
+        return result
+
+    if not is_part_of_patch_set(patch):
+        return result
+
+    cover = thread  # this only works if
+    result.add(cover.name)
+
+    # get leaves of cover letter
+    for child in cover.children:
+        result.add(child.name)
+    return result
+
+
+def get_related_patches(threads, patch):
+    patches = get_versions_of_patch(patch)
+    patches |= get_patch_set(threads, patch)
+    return patches
+
+
+def get_author_of_msg(msg):
+    email = _repo.mbox.get_messages(msg)[0]
+    return email['From']
+
+
+def patch_has_foreign_response(thread, patch):
+    if len(thread.get_thread(patch).children) == 0:
+        return False  # If there is no response the check is trivial
+
+    author = get_author_of_msg(patch)
+
+    for mail in list(LevelOrderIter(thread.get_thread(patch))):
+        this_author = get_author_of_msg(mail.name)
+        if this_author is not author:
+            return True
+    return False
+
+
+def is_single_patch_ignored(threads, patch):
+    try:
+        patch_mail = _repo[patch]
+    except KeyError:
+        return False, patch
+
+    if patch_has_foreign_response(threads, patch):
+        return False, patch
+
+    return True, patch
+
+
+def get_ignored(threads):
+    not_ignored = set()
+    not_upstream_patches = _clusters.get_not_upstream_patches()
+
+    p = get_pool()
+    f = partial(is_single_patch_ignored, threads)
+    results = p.map(f, tqdm(not_upstream_patches))
+
+    #results = []
+    #for patch in tqdm(not_upstream_patches):
+    #    results.append(is_patch_ignored(threads, patch))
+
+    for result in results:
+        if not result[0]:
+            not_ignored |= get_related_patches(result[1])
+
+    ignored = not_upstream_patches - not_ignored
+
+    pickle.dump(ignored, open('resources/linux/ignored.pkl', 'wb'))
+    return ignored
+
+
 def evaluate_patches(config, prog, argv):
     global _log
     if config.mode != config.Mode.MBOX:
@@ -206,11 +300,15 @@ def evaluate_patches(config, prog, argv):
     global _clusters
     global _config
     global _repo
+    global _stats
 
     _config = config
     _repo = config.repo
     _, _clusters = config.load_cluster()
     _clusters.optimize()
+
+    if 'stats' in argv:
+        _stats = True
 
     _log.info('loading tags…')  ################################################################################### Tags
     try:
@@ -238,16 +336,29 @@ def evaluate_patches(config, prog, argv):
         except FileNotFoundError:
             patches_by_version = build_patch_tag_cache(patches_by_version, patches, tags)
 
-    _log.info('Assigning susbsystems to patches')  ########################################################### Subsystem
+    _log.info('Assigning susbsystems to patches')  ################################################ Subsystem/Maintainer
     if 'subsystem' in argv:
         subsystems = get_maintainers(patches_by_version)
+    elif 'no-subsystem' in argv:
+        subsystems = None
     else:
         try:
             subsystems = pickle.load(open('resources/linux/maintainers.pkl', 'rb'))
         except FileNotFoundError:
             subsystems = get_maintainers(patches_by_version)
 
+    threads = _repo.mbox.load_threads()
 
+    _log.info('Identify ignored patches')  ##################################################################### Ignored
+    if 'ignored' in argv:
+        ignored_patches = get_ignored(threads)
+    elif 'no-ignored' in argv:
+        ignored_patches = None
+    else:
+        try:
+            ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
+        except FileNotFoundError:
+            ignored_patches = get_ignored(threads)
 
     pass
 

@@ -240,12 +240,14 @@ class Cluster:
 
         return retval
 
+
     def __iter__(self):
         # iterate over all classes, and return all items
         for elem in self.classes:
             if not elem:
                 continue
             yield elem
+
 
     def iter_untagged(self):
         # iterate over all classes, but return untagged items only
@@ -254,6 +256,7 @@ class Cluster:
             if not untagged:
                 continue
             yield untagged
+
 
     def iter_tagged_only(self):
         # iterate only over classes that are tagged, and return both:
@@ -273,6 +276,15 @@ class Cluster:
         self.optimize()
         with open(filename, 'w') as f:
             f.write(str(self))
+
+    def get_not_upstream_patches (self):
+        res = set ()
+        for group in self.iter_untagged():
+            repres = list(group)[0]
+            if self.get_tagged(repres):
+                continue
+            res |= group
+        return res
 
     @staticmethod
     def from_file(filename, must_exist=False):

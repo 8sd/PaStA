@@ -355,6 +355,37 @@ def check_wrong_maintainer(patches, subsystems):
     return min, max
 
 
+def is_patch_process_mail(patch):
+    try:
+        patch_mail = _repo.mbox[patch]
+    except KeyError:
+        return None
+    subject = patch_mail.mail_subject.lower()
+    if 'linux-next' in subject:
+        return patch
+    if 'git pull' in subject:
+        return patch
+    if 'rfc' in subject:
+        return patch
+    return None
+
+
+def identify_process_mails(patches):
+    p = get_pool()
+    result = p.map(is_patch_process_mail, patches)
+
+    if result is None:
+        return None
+    result = set(result)
+    try:
+        result.remove(None)
+    except KeyError:
+        pass
+
+    pickle.dump(result, open('resources/linux/process_mails.pkl', 'wb'))
+    return result
+
+
 def evaluate_patches(config, prog, argv):
     global _log
     if config.mode != config.Mode.MBOX:
@@ -430,9 +461,20 @@ def evaluate_patches(config, prog, argv):
     elif 'check-maintainer' in argv or not os.path.isfile('resources/linux/check_maintainer.pkl'):
         wrong_maintainer = check_wrong_maintainer(patches, subsystems)
     else:
-        wrong_maintainer = pickle.load('resources/linux/check_maintainer.pkl')
+        wrong_maintainer = pickle.load(open('resources/linux/check_maintainer.pkl', 'rb'))
+
+    _log.info('Identify process patches (eg. git pull)…')  ############################################### Process Mails
+    if 'no-process-mails' in argv:
+        process_mails = None
+    elif 'process-mails' in argv or not os.path.isfile('resources/linux/process_mails.pkl'):
+        process_mails = identify_process_mails(patches)
+    else:
+        process_mails = pickle.load(open('resources/linux/process_mails.pkl', 'rb'))
 
     pass
+
+    for mail in process_mails:
+        print(_repo.mbox[mail].subject)
 
     _log.info("Clean up…")
     p = get_pool()

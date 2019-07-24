@@ -70,4 +70,9 @@ def evaluate_patches(config, prog, argv):
     except FileNotFoundError:
         return -1
 
+    _log.info('Loading patches…')
+    patches = _clusters.get_untagged()
+
+
+
     pass

@@ -45,6 +45,11 @@ def build_tag_cache ():
 
 
 def evaluate_patches(config, prog, argv):
+    global _log
+    if config.mode != config.Mode.MBOX:
+        _log.error('Only works in Mbox mode!')
+        return -1
+
     global _clusters
     global _config
     global _repo

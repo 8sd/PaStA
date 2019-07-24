@@ -9,17 +9,56 @@ Author:
 This work is licensed under the terms of the GNU GPL, version 2. See
 the COPYING file in the top-level directory.
 """
+import datetime
 import pickle
-import subprocess
+
 
 from dateutil import parser
+from functools import partial
 from logging import getLogger
+from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 
 
 _clusters = None
 _config = None
 _log = getLogger(__name__[-15:])
+_p = None
 _repo = None
+
+def get_pool():
+    global _p
+    if _p is None:
+        _p = Pool(processes=cpu_count(), maxtasksperchild=10)
+    return _p
+
+
+def match_tag_patch(tags, patch_id):
+    try:
+        date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
+    except:
+        date_of_mail = datetime.datetime.utcnow()
+    tag_of_patch = ''
+    for (tag, timestamp) in tags:
+        try:
+            if timestamp > date_of_mail:
+                break
+        except:
+            if timestamp.replace(tzinfo=None) > date_of_mail.replace(tzinfo=None):
+                break
+        tag_of_patch = tag
+    return tag_of_patch, patch_id
+
+
+def build_patch_tag_cache (patches_by_version, patches, tags):
+    p  = get_pool()
+    f = partial(match_tag_patch, tags)
+    return_value = p.map(match_tag_patch, tqdm(patches), 10)
+    for tag, result in return_value:
+        patches_by_version[tag].add(result)
+
+    pickle.dump(patches_by_version, open('resources/linux/tags_patches.pkl', 'wb'))
+    return patches_by_version
 
 
 def build_tag_cache ():
@@ -73,6 +112,14 @@ def evaluate_patches(config, prog, argv):
     _log.info('Loading patches…')
     patches = _clusters.get_untagged()
 
-
+    _log.info('Assign tags to patches…')
+    if 'map_patches_tags' in argv:
+        patches_by_version = build_patch_tag_cache(patches_by_version, patches, tags)
+    else:
+        try:
+            patches_by_version = pickle.load(open('resources/linux/tags_patches.pkl', 'rb'))
+            _log.info('loaded pickle')
+        except FileNotFoundError:
+            patches_by_version = build_patch_tag_cache(patches_by_version, patches, tags)
 
     pass

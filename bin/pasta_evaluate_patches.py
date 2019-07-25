@@ -119,17 +119,21 @@ def get_maintainer_file(file):
                          stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     get_maintainer_pipes = p.communicate()
 
-    get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
-    if get_maintainer_out is '':
-        error = get_maintainer_pipes[1].decode("utf-8")
-        if 'not found' in error:
-            file = file[0:file.rfind('/')]
-            get_maintainer_out = get_maintainer_file(file)
-        elif 'Can\'t open perl script "../../../tools/get_maintainer.pl": No such file or directory' in error:
-            _log.warning('Please place get_maintainers.pl in /tools')
-            raise ReferenceError('/tools/get_maintainer.pl is missing')
-        else:
-            raise ValueError('Empty Output, Error: ' + error)
+    try:
+        get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
+        if get_maintainer_out is '':
+            error = get_maintainer_pipes[1].decode("utf-8")
+            if 'not found' in error:
+                file = file[0:file.rfind('/')]
+                get_maintainer_out = get_maintainer_file(file)
+            elif 'Can\'t open perl script "../../../tools/get_maintainer.pl": No such file or directory' in error:
+                _log.warning('Please place get_maintainers.pl in /tools')
+                raise ReferenceError('/tools/get_maintainer.pl is missing')
+            else:
+                raise ValueError('Empty Output, Error: ' + error)
+    except UnicodeError:
+        raise ValueError('Could not en/decode stuff of file ' + file)
+
     return get_maintainer_out
 
 
@@ -446,7 +450,7 @@ def evaluate_patch(patches_by_version, subsystems, ignored_patches, upstream, wr
         'rcv': rcv,
         'kernel version': version,
         'maintainers': subsystems['maintainers'] if subsystems else None,
-        'helping': subsystems['supporter'] | subsystems['odd fixer'] | subsystems['reviewer'] if subsystems else None,
+        'helping': (subsystems['supporter'] | subsystems['odd fixer'] | subsystems['reviewer']) if subsystems else None,
         'lists': subsystems['lists'] if subsystems else None,
         'subsystems': subsystems['subsystem'] if subsystems else None,
         'mailTraffic': mail_traffic,

@@ -18,7 +18,6 @@ import subprocess
 
 from anytree import LevelOrderIter
 from dateutil import parser
-from functools import partial
 from logging import getLogger
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
@@ -31,8 +30,15 @@ _p = None
 _repo = None
 _stats = False
 
-_analyzed_patches = set()
-
+tags = None
+patches_by_version = None
+subsystems = None
+ignored_patches = None
+wrong_maintainer = None
+process_mails = None
+threads = None
+upstream = None
+patches = None
 
 get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
 
@@ -60,7 +66,8 @@ def get_pool():
     return _p
 
 
-def match_tag_patch(tags, patch_id):
+def match_tag_patch(patch_id):
+    global tags
     try:
         date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
     except:
@@ -77,10 +84,13 @@ def match_tag_patch(tags, patch_id):
     return tag_of_patch, patch_id
 
 
-def build_patch_tag_cache (patches_by_version, patches, tags):
+def build_patch_tag_cache ():
+    global patches_by_version
+    global tags
+    global patches
+
     p = get_pool()
-    f = partial(match_tag_patch, tags)
-    return_value = p.map(f, tqdm(patches), 10)
+    return_value = p.map(match_tag_patch, tqdm(patches), 10)
     for tag, result in return_value:
         patches_by_version[tag].add(result)
 
@@ -200,7 +210,8 @@ def get_maintainer_patch(patch_id):
                       'lists': lists, 'subsystem': subsystems_with_stati}
 
 
-def get_maintainers (patches_by_version):
+def get_maintainers ():
+    global patches_by_version
     result = dict()
     for tag in patches_by_version.keys():
         try:
@@ -234,7 +245,9 @@ def is_part_of_patch_set(patch):
         return False
 
 
-def get_patch_set(threads, patch):
+def get_patch_set(patch):
+    global threads
+
     result = set()
     result.add(patch)
     thread = threads.get_thread(patch)
@@ -254,9 +267,9 @@ def get_patch_set(threads, patch):
     return result
 
 
-def get_related_patches(threads, patch):
+def get_related_patches(patch):
     patches = get_versions_of_patch(patch)
-    patches |= get_patch_set(threads, patch)
+    patches |= get_patch_set(patch)
     return patches
 
 
@@ -265,7 +278,8 @@ def get_author_of_msg(msg):
     return email['From']
 
 
-def patch_has_foreign_response(threads, patch):
+def patch_has_foreign_response(patch):
+    global threads
     thread = threads.get_thread(patch)
     if len(thread.children) == 0:
         return False  # If there is no response the check is trivial
@@ -279,24 +293,20 @@ def patch_has_foreign_response(threads, patch):
     return False
 
 
-def is_single_patch_ignored(threads, patch):
-    if patch_has_foreign_response(threads, patch):
+def is_single_patch_ignored(patch):
+    global threads
+    if patch_has_foreign_response(patch):
         return False, patch
 
     return True, patch
 
 
-def get_ignored(threads):
+def get_ignored():
     not_ignored = set()
     not_upstream_patches = _clusters.get_not_upstream_patches()
 
     p = get_pool()
-    f = partial(is_single_patch_ignored, threads)
-    results = p.map(f, tqdm(not_upstream_patches))
-
-    #results = []
-    #for patch in tqdm(not_upstream_patches):
-    #    results.append(is_patch_ignored(threads, patch))
+    results = p.map(is_single_patch_ignored, tqdm(not_upstream_patches))
 
     for result in results:
         if not result[0]:
@@ -308,7 +318,8 @@ def get_ignored(threads):
     return ignored
 
 
-def check_wrong_maintainer_patch(subsystems, patch):
+def check_wrong_maintainer_patch(patch):
+    global subsystems
     msgs = _repo.mbox.get_messages(patch)
     if not msgs:
         return False
@@ -328,28 +339,33 @@ def check_wrong_maintainer_patch(subsystems, patch):
     if subsystem is None:
         return None, None
 
-    min = False
-    max = True
+    some = False
+    all = True
 
     for maintainer in subsystem['maintainers']:
         if maintainer in recipients_clean:
-            min = True
+            some = True
 
     for maintainer in subsystem['maintainers'] | subsystem['supporter'] | subsystem['odd fixer'] | subsystem['reviewer']:
         if maintainer not in recipients_clean:
-            max = False
+            all = False
 
-    if max:
+    if all:
         return None, None
-    if min:
+    if some:
         return None, patch
     return patch, None
 
 
-def check_wrong_maintainer(patches, subsystems):
+def check_wrong_maintainer():
+    global patches
+    global subsystems
+
+    if subsystems is None:
+        _log.warning("Can not check for maintainers, subsystem analysis did not run")
+
     p = get_pool()
-    f = partial(check_wrong_maintainer_patch, subsystems)
-    return_value = p.map(f, tqdm(patches))
+    return_value = p.map(check_wrong_maintainer_patch, tqdm(patches))
 
     min = set()
     max = set()
@@ -387,7 +403,8 @@ def is_patch_process_mail(patch):
     return None
 
 
-def identify_process_mails(patches):
+def identify_process_mails():
+    global patches
     p = get_pool()
     result = p.map(is_patch_process_mail, tqdm(patches))
 
@@ -403,13 +420,22 @@ def identify_process_mails(patches):
     return result
 
 
-def evaluate_patch(patches_by_version, subsystems, ignored_patches, upstream, wrong_maintainer, process_mails, threads,
-                   patch):
+def evaluate_patch(patch):
+
+    global tags
+    global patches_by_version
+    global subsystems
+    global ignored_patches
+    global wrong_maintainer
+    global process_mails
+    global threads
+    global upstream
+
     email = _repo.mbox.get_messages(patch)[0]
     author = email['From'].replace('\'', '"')
     thread = threads.get_thread(patch)
     mail_traffic = sum(1 for _ in LevelOrderIter(thread))
-    first_mail_in_thread = thread.get_thread(patch).name
+    first_mail_in_thread = thread.name
     patchobj = _repo[patch]
 
     to = email['To'] if email['To'] else ''
@@ -430,6 +456,8 @@ def evaluate_patch(patches_by_version, subsystems, ignored_patches, upstream, wr
         version = re.search('v[0-9]+\.', tag).group() + '%02d' % (
                 int(re.search('\.[0-9]+', tag).group()[1:]) + 1)
 
+    subsystem = subsystems[patch]
+
     return {
         'id': patch,
         'subject': email['Subject'],
@@ -442,34 +470,24 @@ def evaluate_patch(patches_by_version, subsystems, ignored_patches, upstream, wr
         '#Files': len(patchobj.diff.affected),
         '#recipients without lists': len(re.findall('<', recipients)),
         '#recipients': len(re.findall('@', recipients)),
-        'timestamp': patchobj.date.timestamp(),
+        'timestamp': patchobj.author.date.timestamp(),
         'after version': tag,
         'rcv': rcv,
         'kernel version': version,
-        'maintainers': subsystems['maintainers'] if subsystems else None,
-        'helping': (subsystems['supporter'] | subsystems['odd fixer'] | subsystems['reviewer']) if subsystems else None,
-        'lists': subsystems['lists'] if subsystems else None,
-        'subsystems': subsystems['subsystem'] if subsystems else None,
+        'maintainers': subsystem['maintainers'] if subsystem else None,
+        'helping': (subsystem['supporter'] | subsystem['odd fixer'] | subsystem['reviewer']) if subsystem else None,
+        'lists': subsystem['lists'] if subsystem else None,
+        'subsystems': subsystem['subsystem'] if subsystem else None,
         'mailTraffic': mail_traffic,
         'firstMailInThread': first_mail_in_thread,
         'process_mail': patch in process_mails if process_mails else None,
     }
 
 
-def _evaluate_patches(patches_by_version, subsystems, ignored_patches, upstream, wrong_maintainer, process_mails,
-                      threads, patches):
+def _evaluate_patches():
     p = get_pool()
-    f = partial(evaluate_patch, patches_by_version, subsystems, ignored_patches, upstream, wrong_maintainer,
-                process_mails, threads);
-    result = p.map(f, tqdm(patches))
+    result = p.map(evaluate_patch, tqdm(patches))
 
-    print(str(result))
-    pass
-    pass
-    pass
-    pass
-    pass
-    pass
     return result
 
 
@@ -492,74 +510,71 @@ def evaluate_patches(config, prog, argv):
     if 'stats' in argv:
         _stats = True
 
-    _log.info('loading tags…')  ################################################################################### Tags
+    global tags
+    global patches_by_version
+    global subsystems
+    global ignored_patches
+    global wrong_maintainer
+    global process_mails
+    global threads
+    global upstream
+    global patches
+
+    patches = _clusters.get_untagged()
+    threads = _repo.mbox.load_threads()
+
+    upstream = _clusters.get_upstream_patches()
+
+    _log.info('loading tags…')  # ################################################################################# Tags
     try:
-        if 'build_tags' in argv:
+        if 'build_tags' in argv or not os.path.isfile('resources/linux/tags.pkl'):
             tags, patches_by_version = build_tag_cache()
         else:
-            try:
-                tags, patches_by_version = pickle.load(open('resources/linux/tags.pkl', 'rb'))
-                _log.info('loaded pickle')
-            except FileNotFoundError:
-                tags, patches_by_version = build_tag_cache()
+            tags, patches_by_version = pickle.load(open('resources/linux/tags.pkl', 'rb'))
     except FileNotFoundError:
         return -1
 
-    _log.info('Loading patches…')  ############################################################################# Patches
-    patches = _clusters.get_untagged()
+    _log.info('Loading patches…')  # ########################################################################### Patches
 
-    _log.info('Assign tags to patches…')  ################################################################# Tag ←→ Patch
-    if 'map_patches_tags' in argv:
-        patches_by_version = build_patch_tag_cache(patches_by_version, patches, tags)
+    _log.info('Assign tags to patches…')  # ############################################################### Tag ←→ Patch
+    if 'map_patches_tags' in argv or not os.path.isfile('resources/linux/tags_patches.pkl'):
+        patches_by_version = build_patch_tag_cache()
     else:
-        try:
-            patches_by_version = pickle.load(open('resources/linux/tags_patches.pkl', 'rb'))
-            _log.info('loaded pickle')
-        except FileNotFoundError:
-            patches_by_version = build_patch_tag_cache(patches_by_version, patches, tags)
+        patches_by_version = pickle.load(open('resources/linux/tags_patches.pkl', 'rb'))
 
-    _log.info('Assigning susbsystems to patches')  ################################################ Subsystem/Maintainer
-    if 'subsystem' in argv:
-        subsystems = get_maintainers(patches_by_version)
-    elif 'no-subsystem' in argv:
+    _log.info('Assigning subsystems to patches')  # ############################################## Subsystem/Maintainer
+    if 'no-subsystem' in argv:
         subsystems = None
+    elif 'subsystem' in argv or not os.path.isfile('resources/linux/maintainers.pkl'):
+        subsystems = get_maintainers()
     else:
-        try:
-            subsystems = pickle.load(open('resources/linux/maintainers.pkl', 'rb'))
-        except FileNotFoundError:
-            subsystems = get_maintainers(patches_by_version)
+        subsystems = pickle.load(open('resources/linux/maintainers.pkl', 'rb'))
 
-    threads = _repo.mbox.load_threads()
-
-    _log.info('Identify ignored patches')  ##################################################################### Ignored
-    if 'ignored' in argv:
-        ignored_patches = get_ignored(threads)
-    elif 'no-ignored' in argv:
+    _log.info('Identify ignored patches')  # ################################################################### Ignored
+    if 'no-ignored' in argv:
         ignored_patches = None
+    elif 'ignored' in argv or not os.path.isfile('resources/linux/ignored.pkl'):
+        ignored_patches = get_ignored()
     else:
-        try:
-            ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
-        except FileNotFoundError:
-            ignored_patches = get_ignored(threads)
+        ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
 
-    _log.info('Identify patches sent to wrong maintainers…')  ######################################### Wrong Maintainer
+    _log.info('Identify patches sent to wrong maintainers…')  # ####################################### Wrong Maintainer
     if 'no-check-maintainer' in argv:
         wrong_maintainer = None
     elif 'check-maintainer' in argv or not os.path.isfile('resources/linux/check_maintainer.pkl'):
-        wrong_maintainer = check_wrong_maintainer(patches, subsystems)
+        wrong_maintainer = check_wrong_maintainer()
     else:
         wrong_maintainer = pickle.load(open('resources/linux/check_maintainer.pkl', 'rb'))
 
-    _log.info('Identify process patches (eg. git pull)…')  ############################################### Process Mails
+    _log.info('Identify process patches (eg. git pull)…')  # ############################################# Process Mails
     if 'no-process-mails' in argv:
         process_mails = None
     elif 'process-mails' in argv or not os.path.isfile('resources/linux/process_mails.pkl'):
-        process_mails = identify_process_mails(patches)
+        process_mails = identify_process_mails()
     else:
         process_mails = pickle.load(open('resources/linux/process_mails.pkl', 'rb'))
 
-    result = _evaluate_patches(patches_by_version, subsystems, ignored_patches, _clusters.get_upstream_patches(),
-                               wrong_maintainer, process_mails, threads, patches)
+    result = _evaluate_patches()
 
     write_dict_list(result, 'patch_evaluation.tsv')
     pickle.dump(result, open('patch_evaluation.pkl', 'wb'))

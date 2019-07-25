@@ -204,11 +204,12 @@ def get_maintainer_patch(patch_id):
         except ValueError:
             pass
 
-        if len(subsystems) is not 0 and len(stati) is not 0:
-            for i in range(1, len(subsystems) + 1):
-                t = ()
+        for i in range(1, len(subsystems) + 1):
+            try:
                 t = subsystems[-i], stati[-i]
-                subsystems_with_stati.add(t)
+            except IndexError:
+                t = subsystems[-i], stati[0]
+            subsystems_with_stati.add(t)
 
     return patch_id, {'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd, 'reviewer': reviewer,
                       'lists': lists, 'subsystem': subsystems_with_stati}

@@ -142,7 +142,9 @@ def get_maintainer_file(file):
             else:
                 raise ValueError('Empty Output, Error: ' + error)
     except UnicodeError:
-        raise ValueError('Could not en/decode stuff of file ' + file)
+        error = 'Could not en/decode stuff of file ' + file
+        _log.warning(error)
+        raise UnicodeError(error)
 
     return get_maintainer_out
 
@@ -159,6 +161,8 @@ def get_maintainer_patch(patch_id):
         try:
             out = get_maintainer_file(file)
         except FileNotFoundError:
+            return patch_id, None
+        except UnicodeError:
             return patch_id, None
 
         lines = out.split('\n')

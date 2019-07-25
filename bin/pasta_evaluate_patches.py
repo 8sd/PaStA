@@ -160,9 +160,7 @@ def get_maintainer_patch(patch_id):
     for file in _repo[patch_id].diff.affected:
         try:
             out = get_maintainer_file(file)
-        except FileNotFoundError:
-            return patch_id, None
-        except UnicodeError:
+        except:
             return patch_id, None
 
         lines = out.split('\n')

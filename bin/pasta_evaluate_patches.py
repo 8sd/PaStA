@@ -220,7 +220,7 @@ def get_maintainers ():
     global patches_by_version
     result = dict()
     for tag in patches_by_version.keys():
-        if os.path.isfile('resources/linux/maintainers.pkl'):
+        if os.path.isfile('resources/linux/maintainers.' + tag + '.pkl'):
             return_value = pickle.load(open('resources/linux/maintainers.' + tag + '.pkl', 'rb'))
         else:
             if len(patches_by_version[tag]) == 0:

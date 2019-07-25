@@ -217,9 +217,9 @@ def get_maintainers ():
     global patches_by_version
     result = dict()
     for tag in patches_by_version.keys():
-        try:
+        if os.path.isfile('resources/linux/maintainers.pkl'):
             return_value = pickle.load(open('resources/linux/maintainers.' + tag + '.pkl', 'rb'))
-        except FileNotFoundError:
+        else:
             if len(patches_by_version[tag]) == 0:
                 continue
             # checkout git

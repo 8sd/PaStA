@@ -157,57 +157,60 @@ def get_maintainer_patch(patch_id):
     reviewer = set()
     lists = set()
 
-    for file in _repo[patch_id].diff.affected:
-        try:
-            out = get_maintainer_file(file)
-        except:
-            return patch_id, None
-
-        lines = out.split('\n')
-
-        for address in lines[0].split(';;'):
-            if address is '':
-                continue
-            elif 'maintain' in address:
-                maintainers.add(address)
-            elif 'supporter' in address:
-                supporter.add(address)
-            elif 'list' in address:
-                lists.add(address)
-            elif 'odd fixer' in address:
-                odd.add(address)
-            elif 'reviewer' in address:
-                reviewer.add(address)
-
-        try:
-            stati = lines[1].split(';;')
-            subsystems = lines[2].split(';;')
-        except IndexError:
-            pass
-
-        t = 'THE REST', 'Buried alive in reporters'
-        subsystems_with_stati.add(t)
-        try:
-            subsystems.remove('THE REST')
-        except ValueError:
-            pass
-
-        try:
-            stati.remove('Buried alive in reporters')
-        except ValueError:
-            pass
-
-        try:
-            subsystems.remove('ABI/API')
-        except ValueError:
-            pass
-
-        for i in range(1, len(subsystems) + 1):
+    try:
+        for file in _repo[patch_id].diff.affected:
             try:
-                t = subsystems[-i], stati[-i]
+                out = get_maintainer_file(file)
+            except:
+                return patch_id, None
+
+            lines = out.split('\n')
+
+            for address in lines[0].split(';;'):
+                if address is '':
+                    continue
+                elif 'maintain' in address:
+                    maintainers.add(address)
+                elif 'supporter' in address:
+                    supporter.add(address)
+                elif 'list' in address:
+                    lists.add(address)
+                elif 'odd fixer' in address:
+                    odd.add(address)
+                elif 'reviewer' in address:
+                    reviewer.add(address)
+
+            try:
+                stati = lines[1].split(';;')
+                subsystems = lines[2].split(';;')
             except IndexError:
-                t = subsystems[-i], stati[0]
+                pass
+
+            t = 'THE REST', 'Buried alive in reporters'
             subsystems_with_stati.add(t)
+            try:
+                subsystems.remove('THE REST')
+            except ValueError:
+                pass
+
+            try:
+                stati.remove('Buried alive in reporters')
+            except ValueError:
+                pass
+
+            try:
+                subsystems.remove('ABI/API')
+            except ValueError:
+                pass
+
+            for i in range(1, len(subsystems) + 1):
+                try:
+                    t = subsystems[-i], stati[-i]
+                except IndexError:
+                    t = subsystems[-i], stati[0]
+                subsystems_with_stati.add(t)
+    except:
+        return patch_id, None
 
     return patch_id, {'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd, 'reviewer': reviewer,
                       'lists': lists, 'subsystem': subsystems_with_stati}

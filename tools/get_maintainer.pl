@@ -624,12 +624,10 @@ if ($scm) {
 }
 
 if ($status) {
-    @status = uniq(@status);
     output(@status);
 }
 
 if ($subsystem) {
-    @subsystem = uniq(@subsystem);
     output(@subsystem);
 }
 

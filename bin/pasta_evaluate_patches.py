@@ -193,10 +193,7 @@ def get_maintainer_patch(patch_id):
         if len(subsystems) is not 0 and len(stati) is not 0:
             for i in range(1, len(subsystems) + 1):
                 t = ()
-                try:
-                    t = subsystems[-i], stati[-i]
-                except IndexError:
-                    t = subsystems[-i], stati[0]
+                t = subsystems[-i], stati[-i]
                 subsystems_with_stati.add(t)
 
     return patch_id, {'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd, 'reviewer': reviewer,

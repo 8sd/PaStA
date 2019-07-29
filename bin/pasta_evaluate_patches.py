@@ -9,7 +9,7 @@ Author:
 This work is licensed under the terms of the GNU GPL, version 2. See
 the COPYING file in the top-level directory.
 """
-import datetime
+
 import os
 import pickle
 import re
@@ -17,7 +17,6 @@ import subprocess
 
 
 from anytree import LevelOrderIter
-from dateutil import parser
 from logging import getLogger
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
@@ -39,6 +38,8 @@ process_mails = None
 threads = None
 upstream = None
 patches = None
+
+MAINLINE_REGEX = re.compile(r'^v(\d+\.\d+|2\.6\.\d+)(-rc\d+)?$')
 
 get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
 
@@ -64,60 +65,6 @@ def get_pool():
     if _p is None:
         _p = Pool(processes=cpu_count(), maxtasksperchild=10)
     return _p
-
-
-def match_tag_patch(patch_id):
-    global tags
-    try:
-        date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
-    except:
-        date_of_mail = datetime.datetime.utcnow()
-    tag_of_patch = ''
-    for (tag, timestamp) in tags:
-        try:
-            if timestamp > date_of_mail:
-                break
-        except:
-            if timestamp.replace(tzinfo=None) > date_of_mail.replace(tzinfo=None):
-                break
-        tag_of_patch = tag
-    return tag_of_patch, patch_id
-
-
-def build_patch_tag_cache ():
-    global patches_by_version
-    global tags
-    global patches
-
-    p = get_pool()
-    return_value = p.map(match_tag_patch, tqdm(patches), 10)
-    for tag, result in return_value:
-        patches_by_version[tag].add(result)
-
-    pickle.dump(patches_by_version, open('resources/linux/tags_patches.pkl', 'wb'))
-    return patches_by_version
-
-
-def build_tag_cache ():
-    _log.info('Parsing tags file')
-
-    tags = list()
-    patches_by_version = dict()
-    try:
-        tags_file = open('resources/linux/tags', 'r')
-    except FileNotFoundError:
-        _log.warning('Could not load tag file')
-        raise FileNotFoundError('resources/linux/tags')
-
-    for line in tags_file:
-        tag = line.split('\t')[0]
-        tags.append((tag, parser.parse(line.split('\t')[1][:-1])))
-        patches_by_version[tag] = set()
-
-    tags = sorted(tags, key=lambda x: x[1])
-
-    pickle.dump((tags, patches_by_version), open('resources/linux/tags.pkl', 'wb'))
-    return tags, patches_by_version
 
 
 def get_maintainer_file(file):
@@ -216,8 +163,7 @@ def get_maintainer_patch(patch_id):
                       'lists': lists, 'subsystem': subsystems_with_stati}
 
 
-def get_maintainers ():
-    global patches_by_version
+def get_maintainers(repo, patches_by_version):
     result = dict()
     for tag in patches_by_version.keys():
         if os.path.isfile('resources/linux/maintainers.' + tag + '.pkl'):
@@ -227,11 +173,17 @@ def get_maintainers ():
                 continue
             # checkout git
             _log.info('Checking out tag: ' + tag)
-            _repo.repo.checkout('refs/tags/' + tag)
+            repo.repo.checkout('refs/tags/' + tag)
+
+            global _repo
+            _repo = repo
 
             # parallel
             p = get_pool()
+
             return_value = p.map(get_maintainer_patch, tqdm(patches_by_version[tag]), 10)
+            _repo = None
+
             pickle.dump(return_value,  open('resources/linux/maintainers.' + tag + '.pkl', 'wb'))
         for patch, res in return_value:
             result[patch] = res
@@ -505,11 +457,11 @@ def evaluate_patches(config, prog, argv):
 
     global _clusters
     global _config
-    global _repo
     global _stats
+    global _repo
 
     _config = config
-    _repo = config.repo
+    repo = config.repo
     _, _clusters = config.load_cluster()
     _clusters.optimize()
 
@@ -527,32 +479,35 @@ def evaluate_patches(config, prog, argv):
     global patches
 
     patches = _clusters.get_untagged()
-    threads = _repo.mbox.load_threads()
-
+    threads = repo.mbox.load_threads()
     upstream = _clusters.get_upstream_patches()
 
-    _log.info('loading tags…')  # ################################################################################# Tags
-    try:
-        if 'build_tags' in argv or not os.path.isfile('resources/linux/tags.pkl'):
-            tags, patches_by_version = build_tag_cache()
-        else:
-            tags, patches_by_version = pickle.load(open('resources/linux/tags.pkl', 'rb'))
-    except FileNotFoundError:
-        return -1
+    mainline_tags = list(filter(lambda x: MAINLINE_REGEX.match(x[0]), repo.tags))
 
-    _log.info('Loading patches…')  # ########################################################################### Patches
+    _log.info('Assigning patches to tags...')
+    patches_by_version = dict()
+    for patch in patches:
+        author_date = repo[patch].author.date
+        tag = None
+        for cand_tag, cand_tag_date in mainline_tags:
+            if cand_tag_date > author_date:
+                break
+            tag = cand_tag
 
-    _log.info('Assign tags to patches…')  # ############################################################### Tag ←→ Patch
-    if 'map_patches_tags' in argv or not os.path.isfile('resources/linux/tags_patches.pkl'):
-        patches_by_version = build_patch_tag_cache()
-    else:
-        patches_by_version = pickle.load(open('resources/linux/tags_patches.pkl', 'rb'))
+        if tag is None:
+            _log.error('No tag found for patch %s' % patch)
+            quit(-1)
+
+        if tag not in patches_by_version:
+            patches_by_version[tag] = set()
+
+        patches_by_version[tag].add(patch)
 
     _log.info('Assigning subsystems to patches')  # ############################################## Subsystem/Maintainer
     if 'no-subsystem' in argv:
         subsystems = None
     elif 'subsystem' in argv or not os.path.isfile('resources/linux/maintainers.pkl'):
-        subsystems = get_maintainers()
+        subsystems = get_maintainers(repo, patches_by_version)
     else:
         subsystems = pickle.load(open('resources/linux/maintainers.pkl', 'rb'))
 

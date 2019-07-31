@@ -450,7 +450,7 @@ def evaluate_patch(patch):
     global upstream
 
     email = _repo.mbox.get_messages(patch)[0]
-    author = email['From'].replace('\'', '"')
+    author = email['From'].replace('\'', '"') if email['From'] else ''
     thread = threads.get_thread(patch)
     mail_traffic = sum(1 for _ in LevelOrderIter(thread))
     first_mail_in_thread = thread.name

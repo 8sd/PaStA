@@ -398,15 +398,15 @@ def is_patch_process_mail(patch):
     try:
         patch_mail = _repo.mbox[patch]
     except KeyError:
-        return None
+        return patch, ''
     subject = patch_mail.mail_subject.lower()
     if 'linux-next' in subject:
-        return patch
+        return patch, 'linux-next'
     if 'git pull' in subject:
-        return patch
-    if 'rfc' in subject:
-        return patch
-    return None
+        return patch, 'git pull'
+    if 'patch rt' in subject:
+        return patch, 'patch rt'
+    return patch, ''
 
 
 def identify_process_mails():
@@ -422,8 +422,12 @@ def identify_process_mails():
     except KeyError:
         pass
 
-    pickle.dump(result, open('resources/linux/process_mails.pkl', 'wb'))
-    return result
+    result_dict = dict()
+    for patch, category in result:
+        result_dict[patch] = category
+
+    pickle.dump(result_dict, open('resources/linux/process_mails.pkl', 'wb'))
+    return result_dict
 
 
 def evaluate_patch(patch):
@@ -486,7 +490,7 @@ def evaluate_patch(patch):
         'subsystems': subsystem['subsystem'] if subsystem else None,
         'mailTraffic': mail_traffic,
         'firstMailInThread': first_mail_in_thread,
-        'process_mail': patch in process_mails if process_mails else None,
+        'process_mail': process_mails[patch]  if process_mails else None,
     }
 
 

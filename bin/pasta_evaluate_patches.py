@@ -155,57 +155,66 @@ def get_maintainer_patch(patch_id):
     lists = set()
 
     try:
-        for file in _repo[patch_id].diff.affected:
-            try:
-                out = get_maintainer_file(file)
-            except:
+        patcho = _repo[patch_id]
+        patch = ''
+
+        for line in patcho.message + patcho.diff.raw:
+            patch += line + '\n'
+
+        p = subprocess.Popen(get_maintainers_args,
+                             cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', # _config.repo_location
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pipes = p.communicate(patch.encode('utf-8'))
+
+        out = pipes[0].decode('utf-8')
+
+        lines = out.split('\n')
+
+        for address in lines[0].split(';;'):
+            if address is '':
                 continue
+            elif 'maintain' in address:
+                maintainers.add(address)
+            elif 'supporter' in address:
+                supporter.add(address)
+            elif 'list' in address:
+                lists.add(address)
+            elif 'odd fixer' in address:
+                odd.add(address)
+            elif 'reviewer' in address:
+                reviewer.add(address)
 
-            lines = out.split('\n')
+        try:
+            stati = lines[1].split(';;')
+            subsystems = lines[2].split(';;')
+        except IndexError:
+            pass
 
-            for address in lines[0].split(';;'):
-                if address is '':
-                    continue
-                elif 'maintain' in address:
-                    maintainers.add(address)
-                elif 'supporter' in address:
-                    supporter.add(address)
-                elif 'list' in address:
-                    lists.add(address)
-                elif 'odd fixer' in address:
-                    odd.add(address)
-                elif 'reviewer' in address:
-                    reviewer.add(address)
+        t = 'THE REST', 'Buried alive in reporters'
+        subsystems_with_stati.add(t)
+        try:
+            subsystems.remove('THE REST')
+        except ValueError:
+            pass
 
-            try:
-                stati = lines[1].split(';;')
-                subsystems = lines[2].split(';;')
-            except IndexError:
-                pass
+        try:
+            stati.remove('Buried alive in reporters')
+        except ValueError:
+            pass
 
-            t = 'THE REST', 'Buried alive in reporters'
+        try:
+            subsystems.remove('ABI/API')
+            t = 'ABI/API', 'Maintained'
             subsystems_with_stati.add(t)
-            try:
-                subsystems.remove('THE REST')
-            except ValueError:
-                pass
+        except ValueError:
+            pass
 
+        for i in range(1, len(subsystems) + 1):
             try:
-                stati.remove('Buried alive in reporters')
-            except ValueError:
-                pass
-
-            try:
-                subsystems.remove('ABI/API')
-            except ValueError:
-                pass
-
-            for i in range(1, len(subsystems) + 1):
-                try:
-                    t = subsystems[-i], stati[-i]
-                except IndexError:
-                    t = subsystems[-i], stati[0]
-                subsystems_with_stati.add(t)
+                t = subsystems[-i], stati[-i]
+            except IndexError:
+                t = subsystems[-i], stati[0]
+            subsystems_with_stati.add(t)
     except:
         return patch_id, None
 
@@ -468,6 +477,11 @@ def evaluate_patch(patch):
 
     subsystem = subsystems[patch]
 
+    try:
+        process = process_mails[patch] if process_mails else None,
+    except:
+        process = ''
+
     return {
         'id': patch,
         'subject': email['Subject'],
@@ -490,7 +504,7 @@ def evaluate_patch(patch):
         'subsystems': subsystem['subsystem'] if subsystem else None,
         'mailTraffic': mail_traffic,
         'firstMailInThread': first_mail_in_thread,
-        'process_mail': process_mails[patch]  if process_mails else None,
+        'process_mail': process
     }
 
 

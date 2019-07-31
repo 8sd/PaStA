@@ -64,6 +64,179 @@ def get_pool():
     return _p
 
 
+def match_tag_patch(patch_id):
+    global tags
+    try:
+        date_of_mail = parser.parse(_repo.mbox.get_messages(patch_id)[0]['Date'])
+    except:
+        date_of_mail = datetime.datetime.utcnow()
+    tag_of_patch = ''
+    for (tag, timestamp) in tags:
+        try:
+            if timestamp > date_of_mail:
+                break
+        except:
+            if timestamp.replace(tzinfo=None) > date_of_mail.replace(tzinfo=None):
+                break
+        tag_of_patch = tag
+    return tag_of_patch, patch_id
+
+
+def build_patch_tag_cache ():
+    global patches_by_version
+    global tags
+    global patches
+
+    p = get_pool()
+    return_value = p.map(match_tag_patch, tqdm(patches), 10)
+    for tag, result in return_value:
+        patches_by_version[tag].add(result)
+
+    pickle.dump(patches_by_version, open('resources/linux/tags_patches.pkl', 'wb'))
+    return patches_by_version
+
+
+def build_tag_cache ():
+    _log.info('Parsing tags file')
+
+    tags = list()
+    patches_by_version = dict()
+    try:
+        tags_file = open('resources/linux/tags', 'r')
+    except FileNotFoundError:
+        _log.warning('Could not load tag file')
+        raise FileNotFoundError('resources/linux/tags')
+
+    for line in tags_file:
+        tag = line.split('\t')[0]
+        tags.append((tag, parser.parse(line.split('\t')[1][:-1])))
+        patches_by_version[tag] = set()
+
+    tags = sorted(tags, key=lambda x: x[1])
+
+    return tags, patches_by_version
+
+
+def get_maintainer_file(file):
+    if file is '':
+        raise FileNotFoundError
+
+    p = subprocess.Popen(get_maintainers_args + [file],
+                         cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', # _config.repo_location
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    get_maintainer_pipes = p.communicate()
+
+    try:
+        get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
+        if get_maintainer_out is '':
+            error = get_maintainer_pipes[1].decode("utf-8")
+            if 'not found' in error:
+                file = file[0:file.rfind('/')]
+                get_maintainer_out = get_maintainer_file(file)
+            elif 'Can\'t open perl script "../../../tools/get_maintainer.pl": No such file or directory' in error:
+                _log.warning('Please place get_maintainers.pl in /tools')
+                raise ReferenceError('/tools/get_maintainer.pl is missing')
+            else:
+                raise ValueError('Empty Output, Error: ' + error)
+    except UnicodeError:
+        error = 'Could not en/decode stuff of file ' + file
+        _log.warning(error)
+        raise UnicodeError(error)
+
+    return get_maintainer_out
+
+
+def get_maintainer_patch(patch_id):
+    subsystems_with_stati = set()
+    maintainers = set()
+    supporter = set()
+    odd = set()
+    reviewer = set()
+    lists = set()
+
+    try:
+        for file in _repo[patch_id].diff.affected:
+            try:
+                out = get_maintainer_file(file)
+            except:
+                continue
+
+            lines = out.split('\n')
+
+            for address in lines[0].split(';;'):
+                if address is '':
+                    continue
+                elif 'maintain' in address:
+                    maintainers.add(address)
+                elif 'supporter' in address:
+                    supporter.add(address)
+                elif 'list' in address:
+                    lists.add(address)
+                elif 'odd fixer' in address:
+                    odd.add(address)
+                elif 'reviewer' in address:
+                    reviewer.add(address)
+
+            try:
+                stati = lines[1].split(';;')
+                subsystems = lines[2].split(';;')
+            except IndexError:
+                pass
+
+            t = 'THE REST', 'Buried alive in reporters'
+            subsystems_with_stati.add(t)
+            try:
+                subsystems.remove('THE REST')
+            except ValueError:
+                pass
+
+            try:
+                stati.remove('Buried alive in reporters')
+            except ValueError:
+                pass
+
+            try:
+                subsystems.remove('ABI/API')
+            except ValueError:
+                pass
+
+            for i in range(1, len(subsystems) + 1):
+                try:
+                    t = subsystems[-i], stati[-i]
+                except IndexError:
+                    t = subsystems[-i], stati[0]
+                subsystems_with_stati.add(t)
+    except:
+        return patch_id, None
+
+    return patch_id, {'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd, 'reviewer': reviewer,
+                      'lists': lists, 'subsystem': subsystems_with_stati}
+
+
+def get_maintainers ():
+    global patches_by_version
+    result = dict()
+    for tag in patches_by_version.keys():
+        if os.path.isfile('resources/linux/maintainers.' + tag + '.pkl'):
+            return_value = pickle.load(open('resources/linux/maintainers.' + tag + '.pkl', 'rb'))
+        else:
+            if len(patches_by_version[tag]) == 0:
+                continue
+            # checkout git
+            _log.info('Checking out tag: ' + tag)
+            _repo.repo.checkout('refs/tags/' + tag)
+
+            # parallel
+            p = get_pool()
+            return_value = p.map(get_maintainer_patch, tqdm(patches_by_version[tag]), 10)
+            pickle.dump(return_value,  open('resources/linux/maintainers.' + tag + '.pkl', 'wb'))
+        for patch, res in return_value:
+            result[patch] = res
+
+    pickle.dump(result, open('resources/linux/maintainers.pkl', 'wb'))
+    return result
+
+
 def get_versions_of_patch(patch):
     return _clusters.get_untagged(patch)
 
@@ -163,7 +336,7 @@ def check_wrong_maintainer_patch(patch):
     to = msg['To'] if msg['To'] else ''
     cc = msg['Cc'] if msg['Cc'] else ''
 
-    recipients = (to + cc).split(',')
+    recipients = (str(to) + str(cc)).split(',')
     recipients_clean = []
     for recipient in recipients:
         recipients_clean.append(recipient.replace('\n', '').replace(' ', ''))
@@ -187,7 +360,7 @@ def check_wrong_maintainer_patch(patch):
         return None, None
     if some:
         return None, patch
-    return patch, None
+    return patch, patch
 
 
 def check_wrong_maintainer():
@@ -274,7 +447,7 @@ def evaluate_patch(patch):
     to = email['To'] if email['To'] else ''
     cc = email['Cc'] if email['Cc'] else ''
 
-    recipients = to + cc
+    recipients = str(to) + str(cc)
 
     for k in patches_by_version.keys():
         if patch in patches_by_version[k]:

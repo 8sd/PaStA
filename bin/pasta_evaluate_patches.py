@@ -21,15 +21,17 @@ from logging import getLogger
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
+from pypasta.LinuxMaintainers import LinuxMaintainers
+
+log = getLogger(__name__[-15:])
+
 
 _clusters = None
 _config = None
-_log = getLogger(__name__[-15:])
 _p = None
 _repo = None
 _stats = False
 
-tags = None
 patches_by_version = None
 subsystems = None
 ignored_patches = None
@@ -40,8 +42,6 @@ upstream = None
 patches = None
 
 MAINLINE_REGEX = re.compile(r'^v(\d+\.\d+|2\.6\.\d+)(-rc\d+)?$')
-
-get_maintainers_args = ['perl', '../../../tools/get_maintainer.pl', '--subsystem', '--status', '--separator', ';;']
 
 
 def write_cell(file, string):
@@ -65,131 +65,6 @@ def get_pool():
     if _p is None:
         _p = Pool(processes=cpu_count(), maxtasksperchild=10)
     return _p
-
-
-def get_maintainer_file(file):
-    if file is '':
-        raise FileNotFoundError
-
-    p = subprocess.Popen(get_maintainers_args + [file],
-                         cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
-                         stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    get_maintainer_pipes = p.communicate()
-
-    try:
-        get_maintainer_out = get_maintainer_pipes[0].decode("utf-8")
-        if get_maintainer_out is '':
-            error = get_maintainer_pipes[1].decode("utf-8")
-            if 'not found' in error:
-                file = file[0:file.rfind('/')]
-                get_maintainer_out = get_maintainer_file(file)
-            elif 'Can\'t open perl script "../../../tools/get_maintainer.pl": No such file or directory' in error:
-                _log.warning('Please place get_maintainers.pl in /tools')
-                raise ReferenceError('/tools/get_maintainer.pl is missing')
-            else:
-                raise ValueError('Empty Output, Error: ' + error)
-    except UnicodeError:
-        error = 'Could not en/decode stuff of file ' + file
-        _log.warning(error)
-        raise UnicodeError(error)
-
-    return get_maintainer_out
-
-
-def get_maintainer_patch(patch_id):
-    subsystems_with_stati = set()
-    maintainers = set()
-    supporter = set()
-    odd = set()
-    reviewer = set()
-    lists = set()
-
-    try:
-        for file in _repo[patch_id].diff.affected:
-            try:
-                out = get_maintainer_file(file)
-            except:
-                return patch_id, None
-
-            lines = out.split('\n')
-
-            for address in lines[0].split(';;'):
-                if address is '':
-                    continue
-                elif 'maintain' in address:
-                    maintainers.add(address)
-                elif 'supporter' in address:
-                    supporter.add(address)
-                elif 'list' in address:
-                    lists.add(address)
-                elif 'odd fixer' in address:
-                    odd.add(address)
-                elif 'reviewer' in address:
-                    reviewer.add(address)
-
-            try:
-                stati = lines[1].split(';;')
-                subsystems = lines[2].split(';;')
-            except IndexError:
-                pass
-
-            t = 'THE REST', 'Buried alive in reporters'
-            subsystems_with_stati.add(t)
-            try:
-                subsystems.remove('THE REST')
-            except ValueError:
-                pass
-
-            try:
-                stati.remove('Buried alive in reporters')
-            except ValueError:
-                pass
-
-            try:
-                subsystems.remove('ABI/API')
-            except ValueError:
-                pass
-
-            for i in range(1, len(subsystems) + 1):
-                try:
-                    t = subsystems[-i], stati[-i]
-                except IndexError:
-                    t = subsystems[-i], stati[0]
-                subsystems_with_stati.add(t)
-    except:
-        return patch_id, None
-
-    return patch_id, {'maintainers': maintainers, 'supporter': supporter, 'odd fixer': odd, 'reviewer': reviewer,
-                      'lists': lists, 'subsystem': subsystems_with_stati}
-
-
-def get_maintainers(repo, patches_by_version):
-    result = dict()
-    for tag in patches_by_version.keys():
-        if os.path.isfile('resources/linux/maintainers.' + tag + '.pkl'):
-            return_value = pickle.load(open('resources/linux/maintainers.' + tag + '.pkl', 'rb'))
-        else:
-            if len(patches_by_version[tag]) == 0:
-                continue
-            # checkout git
-            _log.info('Checking out tag: ' + tag)
-            repo.repo.checkout('refs/tags/' + tag)
-
-            global _repo
-            _repo = repo
-
-            # parallel
-            p = get_pool()
-
-            return_value = p.map(get_maintainer_patch, tqdm(patches_by_version[tag]), 10)
-            _repo = None
-
-            pickle.dump(return_value,  open('resources/linux/maintainers.' + tag + '.pkl', 'wb'))
-        for patch, res in return_value:
-            result[patch] = res
-
-    pickle.dump(result, open('resources/linux/maintainers.pkl', 'wb'))
-    return result
 
 
 def get_versions_of_patch(patch):
@@ -320,7 +195,7 @@ def check_wrong_maintainer():
     global subsystems
 
     if subsystems is None:
-        _log.warning("Can not check for maintainers, subsystem analysis did not run")
+        log.warning("Can not check for maintainers, subsystem analysis did not run")
 
     p = get_pool()
     return_value = p.map(check_wrong_maintainer_patch, tqdm(patches))
@@ -449,26 +324,44 @@ def _evaluate_patches():
     return result
 
 
+def load_maintainers(tag):
+    pyrepo = _repo.repo
+
+    tag_hash = pyrepo.lookup_reference('refs/tags/%s' % tag).target
+    commit_hash = pyrepo[tag_hash].target
+    maintainers_blob_hash = pyrepo[commit_hash].tree['MAINTAINERS'].id
+    maintainers = pyrepo[maintainers_blob_hash].data
+
+    try:
+        maintainers = maintainers.decode('utf-8')
+    except:
+        # older versions use ISO8859
+        maintainers = maintainers.decode('iso8859')
+
+    m = LinuxMaintainers(maintainers)
+
+    #_log.info('  Loaded MAINTAINERS for %s' % tag)
+
+    return tag, m
+
+
 def evaluate_patches(config, prog, argv):
-    global _log
+    global _stats
+
     if config.mode != config.Mode.MBOX:
-        _log.error('Only works in Mbox mode!')
+        log.error('Only works in Mbox mode!')
         return -1
 
-    global _clusters
-    global _config
-    global _stats
-    global _repo
 
-    _config = config
     repo = config.repo
-    _, _clusters = config.load_cluster()
-    _clusters.optimize()
+    _, clusters = config.load_cluster()
+    clusters.optimize()
+
+    config.load_ccache_mbox()
 
     if 'stats' in argv:
         _stats = True
 
-    global tags
     global patches_by_version
     global subsystems
     global ignored_patches
@@ -478,13 +371,14 @@ def evaluate_patches(config, prog, argv):
     global upstream
     global patches
 
-    patches = _clusters.get_untagged()
+    log.info('Loading relevant patches...')
+    patches = clusters.get_untagged()
     threads = repo.mbox.load_threads()
-    upstream = _clusters.get_upstream_patches()
+    upstream = clusters.get_upstream_patches()
 
+    log.info('Assigning patches to tags...')
+    # Only respect mainline versions. No stable versions like v4.2.3
     mainline_tags = list(filter(lambda x: MAINLINE_REGEX.match(x[0]), repo.tags))
-
-    _log.info('Assigning patches to tags...')
     patches_by_version = dict()
     for patch in patches:
         author_date = repo[patch].author.date
@@ -495,7 +389,7 @@ def evaluate_patches(config, prog, argv):
             tag = cand_tag
 
         if tag is None:
-            _log.error('No tag found for patch %s' % patch)
+            log.error('No tag found for patch %s' % patch)
             quit(-1)
 
         if tag not in patches_by_version:
@@ -503,15 +397,28 @@ def evaluate_patches(config, prog, argv):
 
         patches_by_version[tag].add(patch)
 
-    _log.info('Assigning subsystems to patches')  # ############################################## Subsystem/Maintainer
-    if 'no-subsystem' in argv:
-        subsystems = None
-    elif 'subsystem' in argv or not os.path.isfile('resources/linux/maintainers.pkl'):
-        subsystems = get_maintainers(repo, patches_by_version)
-    else:
-        subsystems = pickle.load(open('resources/linux/maintainers.pkl', 'rb'))
+    log.info('Loading realevant MAINTAINERS files...')
+    maintainers_version = dict()
+    tags = list(patches_by_version.keys())
+    global _repo
+    _repo = repo
+    p = Pool(processes=cpu_count())
+    for tag, maintainers in tqdm(p.imap_unordered(load_maintainers, tags),
+                                 total=len(tags), desc='MAINTAINERS'):
+        maintainers_version[tag] = maintainers
+    p.close()
+    p.join()
+    _repo = None
 
-    _log.info('Identify ignored patches')  # ################################################################### Ignored
+    log.info('Assigning subsystems to patches...')
+    for tag, patches in patches_by_version.items():
+        maintainers = maintainers_version[tag]
+        for patch in patches:
+            files = repo[patch].diff.affected
+            subsystems = maintainers.get_subsystems_by_files(files)
+            print('Subsystems of %s: %s' % (patch, ' / '.join(subsystems)))
+
+    log.info('Identify ignored patches')  # ################################################################### Ignored
     if 'no-ignored' in argv:
         ignored_patches = None
     elif 'ignored' in argv or not os.path.isfile('resources/linux/ignored.pkl'):
@@ -519,7 +426,7 @@ def evaluate_patches(config, prog, argv):
     else:
         ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
 
-    _log.info('Identify patches sent to wrong maintainers…')  # ####################################### Wrong Maintainer
+    log.info('Identify patches sent to wrong maintainers…')  # ####################################### Wrong Maintainer
     if 'no-check-maintainer' in argv:
         wrong_maintainer = None
     elif 'check-maintainer' in argv or not os.path.isfile('resources/linux/check_maintainer.pkl'):
@@ -527,7 +434,7 @@ def evaluate_patches(config, prog, argv):
     else:
         wrong_maintainer = pickle.load(open('resources/linux/check_maintainer.pkl', 'rb'))
 
-    _log.info('Identify process patches (eg. git pull)…')  # ############################################# Process Mails
+    log.info('Identify process patches (eg. git pull)…')  # ############################################# Process Mails
     if 'no-process-mails' in argv:
         process_mails = None
     elif 'process-mails' in argv or not os.path.isfile('resources/linux/process_mails.pkl'):
@@ -540,7 +447,7 @@ def evaluate_patches(config, prog, argv):
     write_dict_list(result, 'patch_evaluation.tsv')
     pickle.dump(result, open('patch_evaluation.pkl', 'wb'))
 
-    _log.info("Clean up…")
+    log.info("Clean up…")
     p = get_pool()
     p.close()
     p.join()

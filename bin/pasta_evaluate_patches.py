@@ -9,6 +9,7 @@ Author:
 This work is licensed under the terms of the GNU GPL, version 2. See
 the COPYING file in the top-level directory.
 """
+
 import datetime
 import os
 import pickle
@@ -116,7 +117,6 @@ def build_tag_cache ():
 
     tags = sorted(tags, key=lambda x: x[1])
 
-    pickle.dump((tags, patches_by_version), open('resources/linux/tags.pkl', 'wb'))
     return tags, patches_by_version
 
 
@@ -125,8 +125,8 @@ def get_maintainer_file(file):
         raise FileNotFoundError
 
     p = subprocess.Popen(get_maintainers_args + [file],
-                         cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/',
-                         stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+                         cwd=os.path.dirname(os.path.realpath(__file__)) + '/../resources/linux/repo/', # _config.repo_location
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     get_maintainer_pipes = p.communicate()
 
     try:
@@ -162,7 +162,7 @@ def get_maintainer_patch(patch_id):
             try:
                 out = get_maintainer_file(file)
             except:
-                return patch_id, None
+                continue
 
             lines = out.split('\n')
 
@@ -300,7 +300,6 @@ def patch_has_foreign_response(patch):
 
 
 def is_single_patch_ignored(patch):
-    global threads
     if patch_has_foreign_response(patch):
         return False, patch
 
@@ -336,7 +335,7 @@ def check_wrong_maintainer_patch(patch):
     to = msg['To'] if msg['To'] else ''
     cc = msg['Cc'] if msg['Cc'] else ''
 
-    recipients = (to + cc).split(',')
+    recipients = (str(to) + str(cc)).split(',')
     recipients_clean = []
     for recipient in recipients:
         recipients_clean.append(recipient.replace('\n', '').replace(' ', ''))
@@ -360,7 +359,7 @@ def check_wrong_maintainer_patch(patch):
         return None, None
     if some:
         return None, patch
-    return patch, None
+    return patch, patch
 
 
 def check_wrong_maintainer():
@@ -447,7 +446,7 @@ def evaluate_patch(patch):
     to = email['To'] if email['To'] else ''
     cc = email['Cc'] if email['Cc'] else ''
 
-    recipients = to + cc
+    recipients = str(to) + str(cc)
 
     for k in patches_by_version.keys():
         if patch in patches_by_version[k]:
@@ -540,15 +539,13 @@ def evaluate_patches(config, prog, argv):
     except FileNotFoundError:
         return -1
 
-    _log.info('Loading patches…')  # ########################################################################### Patches
-
     _log.info('Assign tags to patches…')  # ############################################################### Tag ←→ Patch
     if 'map_patches_tags' in argv or not os.path.isfile('resources/linux/tags_patches.pkl'):
         patches_by_version = build_patch_tag_cache()
     else:
         patches_by_version = pickle.load(open('resources/linux/tags_patches.pkl', 'rb'))
 
-    _log.info('Assigning subsystems to patches')  # ############################################## Subsystem/Maintainer
+    _log.info('Assigning subsystems to patches')  # ############################################### Subsystem/Maintainer
     if 'no-subsystem' in argv:
         subsystems = None
     elif 'subsystem' in argv or not os.path.isfile('resources/linux/maintainers.pkl'):

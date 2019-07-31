@@ -25,11 +25,9 @@ from pypasta.LinuxMaintainers import LinuxMaintainers
 
 log = getLogger(__name__[-15:])
 
-
-_clusters = None
+_repo = None
 _config = None
 _p = None
-_repo = None
 _stats = False
 
 patches_by_version = None
@@ -37,7 +35,6 @@ subsystems = None
 ignored_patches = None
 wrong_maintainer = None
 process_mails = None
-threads = None
 upstream = None
 patches = None
 
@@ -111,9 +108,9 @@ def get_author_of_msg(msg):
     return email['From']
 
 
-def patch_has_foreign_response(patch):
-    global threads
-    thread = threads.get_thread(patch)
+def patch_has_foreign_response(repo, patch):
+    thread = repo.mbox.threads.get_thread(patch)
+
     if len(thread.children) == 0:
         return False  # If there is no response the check is trivial
 
@@ -127,19 +124,22 @@ def patch_has_foreign_response(patch):
 
 
 def is_single_patch_ignored(patch):
-    global threads
-    if patch_has_foreign_response(patch):
+    if patch_has_foreign_response(_repo, patch):
         return False, patch
 
     return True, patch
 
 
-def get_ignored():
+def get_ignored(repo, clusters):
     not_ignored = set()
-    not_upstream_patches = _clusters.get_not_upstream_patches()
+    not_upstream_patches = clusters.get_not_upstream_patches()
 
     p = get_pool()
-    results = p.map(is_single_patch_ignored, tqdm(not_upstream_patches))
+    global _repo
+    _repo = repo
+    #results = p.map(is_single_patch_ignored, tqdm(not_upstream_patches))
+    results = list(map(is_single_patch_ignored, not_upstream_patches))
+    _repo = None
 
     for result in results:
         if not result[0]:
@@ -358,6 +358,7 @@ def evaluate_patches(config, prog, argv):
     clusters.optimize()
 
     config.load_ccache_mbox()
+    repo.mbox.load_threads()
 
     if 'stats' in argv:
         _stats = True
@@ -367,13 +368,11 @@ def evaluate_patches(config, prog, argv):
     global ignored_patches
     global wrong_maintainer
     global process_mails
-    global threads
     global upstream
     global patches
 
     log.info('Loading relevant patches...')
     patches = clusters.get_untagged()
-    threads = repo.mbox.load_threads()
     upstream = clusters.get_upstream_patches()
 
     log.info('Assigning patches to tags...')
@@ -416,13 +415,12 @@ def evaluate_patches(config, prog, argv):
         for patch in patches:
             files = repo[patch].diff.affected
             subsystems = maintainers.get_subsystems_by_files(files)
-            print('Subsystems of %s: %s' % (patch, ' / '.join(subsystems)))
 
     log.info('Identify ignored patches')  # ################################################################### Ignored
     if 'no-ignored' in argv:
         ignored_patches = None
     elif 'ignored' in argv or not os.path.isfile('resources/linux/ignored.pkl'):
-        ignored_patches = get_ignored()
+        ignored_patches = get_ignored(repo, clusters)
     else:
         ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
 

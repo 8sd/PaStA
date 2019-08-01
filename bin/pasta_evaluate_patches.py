@@ -640,3 +640,4 @@ def evaluate_patches(config, prog, argv):
     p = get_pool()
     p.close()
     p.join()
+

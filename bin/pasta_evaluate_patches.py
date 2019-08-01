@@ -352,8 +352,8 @@ def evaluate_patches(config, prog, argv):
 
 
     repo = config.repo
-    _, clusters = config.load_cluster()
-    clusters.optimize()
+    _, clustering = config.load_cluster()
+    clustering.optimize()
 
     config.load_ccache_mbox()
     repo.mbox.load_threads()
@@ -370,8 +370,11 @@ def evaluate_patches(config, prog, argv):
     global patches
 
     log.info('Loading relevant patches...')
-    patches = clusters.get_untagged()
-    upstream = clusters.get_upstream_patches()
+    patches = set()
+    upstream = set()
+    for d, u in clustering.iter_split():
+        patches |= d
+        upstream |= u
 
     log.info('Assigning patches to tags...')
     # Only respect mainline versions. No stable versions like v4.2.3

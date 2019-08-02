@@ -30,14 +30,6 @@ _config = None
 _p = None
 _stats = False
 
-patches_by_version = None
-subsystems = None
-ignored_patches = None
-wrong_maintainer = None
-process_mails = None
-upstream = None
-patches = None
-
 MAINLINE_REGEX = re.compile(r'^v(\d+\.\d+|2\.6\.\d+)(-rc\d+)?$')
 
 
@@ -64,10 +56,6 @@ def get_pool():
     return _p
 
 
-def get_versions_of_patch(patch):
-    return _clusters.get_untagged(patch)
-
-
 def is_part_of_patch_set(patch):
     try:
         return re.search(r'[0-9]+/[0-9]+\]', _repo[patch].mail_subject) is not None
@@ -76,8 +64,6 @@ def is_part_of_patch_set(patch):
 
 
 def get_patch_set(patch):
-    global threads
-
     result = set()
     result.add(patch)
     thread = threads.get_thread(patch)
@@ -97,15 +83,9 @@ def get_patch_set(patch):
     return result
 
 
-def get_related_patches(patch):
-    patches = get_versions_of_patch(patch)
-    patches |= get_patch_set(patch)
-    return patches
-
-
-def get_author_of_msg(msg):
-    email = _repo.mbox.get_messages(msg)[0]
-    return email['From']
+def get_author_of_msg(repo, msg_id):
+    email = repo.mbox.get_messages(msg_id)[0]
+    return email['From'].lower()
 
 
 def patch_has_foreign_response(repo, patch):
@@ -114,41 +94,97 @@ def patch_has_foreign_response(repo, patch):
     if len(thread.children) == 0:
         return False  # If there is no response the check is trivial
 
-    author = get_author_of_msg(patch)
+    author = get_author_of_msg(repo, patch)
 
     for mail in list(LevelOrderIter(thread)):
-        this_author = get_author_of_msg(mail.name)
-        if this_author is not author:
+        this_author = get_author_of_msg(repo, mail.name)
+        if this_author != author:
             return True
     return False
 
 
 def is_single_patch_ignored(patch):
-    if patch_has_foreign_response(_repo, patch):
-        return False, patch
-
-    return True, patch
+    return patch, not patch_has_foreign_response(_repo, patch)
 
 
-def get_ignored(repo, clusters):
+def get_authors_in_thread(repo, thread):
+    authors = set()
+
+    authors.add(get_author_of_msg(repo, thread.name))
+
+    for child in thread.children:
+        authors |= get_authors_in_thread(repo, child)
+
+    return authors
+
+
+def get_ignored(repo, clustering):
+    # First, we have to define the term patch. In this analysis, we must only
+    # regard patches that either fulfil rule 1 or 2:
+    #
+    # 1. Patch is the parent of a thread.
+    #    This covers classic one-email patches
+    #
+    # 2. Patch is the 1st level child of the parent of a thread
+    #    In this case, the parent can either be a patch (e.g., a series w/o
+    #    cover letter) or not a patch (e.g., parent is a cover letter)
+    #
+    # All other patches MUST be ignored. Rationale: Maintainers may re-send
+    # the patch as a reply of the discussion. Such patches must be ignored.
+    # Example: Look at the thread of
+    #     <20190408072929.952A1441D3B@finisterre.ee.mobilebroadband>
+
+    population_not_accepted = 0
+    population_accepted = 0
+
+    not_upstreamed_patches = list()
+    for downstream, upstream in clustering.iter_split():
+        # Dive into downstream, and check the above-mentioned criteria
+        relevant = set()
+        for d in downstream:
+            thread = repo.mbox.threads.get_thread(d)
+
+            if thread.name == d or \
+               d in [x.name for x in thread.children]:
+                relevant.add(d)
+
+        # Nothing left? Skip the cluster.
+        if len(relevant) == 0:
+            continue
+
+        # For the statistics, we'd like to know how many patches fall in this
+        # category. Even if they were accepted. No need to continue if the patch
+        # was accepted, as it is obvious that it was not ignored. Still, do the
+        # housekeeping.
+        if len(upstream):
+            population_accepted += len(relevant)
+            continue
+
+        population_not_accepted += len(relevant)
+        not_upstreamed_patches.append(relevant)
+
+    # If a patch was ignored, only the author will appear
     not_ignored = set()
-    not_upstream_patches = clusters.get_not_upstream_patches()
-
-    p = get_pool()
     global _repo
     _repo = repo
-    #results = p.map(is_single_patch_ignored, tqdm(not_upstream_patches))
-    results = list(map(is_single_patch_ignored, not_upstream_patches))
+
+    p = Pool(cpu_count())
+    not_upstreamed_patches_flattened = {x for cluster in not_upstreamed_patches for x in cluster}
+    is_ignored = p.map(is_single_patch_ignored, tqdm(not_upstreamed_patches_flattened))
+    p.close()
+    p.join()
     _repo = None
 
-    for result in results:
-        if not result[0]:
-            not_ignored |= get_related_patches(result[1])
+    # ignored_patches will be a dictionary key: patch value: is_ignored
+    is_ignored = dict(is_ignored)
 
-    ignored = not_upstream_patches - not_ignored
-
-    pickle.dump(ignored, open('resources/linux/ignored.pkl', 'wb'))
-    return ignored
+    num_ignored_patches = len(list(filter(lambda x: x == True, is_ignored.values())))
+    log.info('Not accepted patches: %u' % population_not_accepted)
+    log.info('Accepted patches: %u' % population_accepted)
+    log.info('Found %u ignored patches' % num_ignored_patches)
+    log.info('Fraction of ignored patched: %0.3f' %
+             (num_ignored_patches /
+              (population_accepted + population_not_accepted)))
 
 
 def check_wrong_maintainer_patch(patch):
@@ -376,6 +412,7 @@ def evaluate_patches(config, prog, argv):
         patches |= d
         upstream |= u
 
+    """
     log.info('Assigning patches to tags...')
     # Only respect mainline versions. No stable versions like v4.2.3
     mainline_tags = list(filter(lambda x: MAINLINE_REGEX.match(x[0]), repo.tags))
@@ -416,14 +453,18 @@ def evaluate_patches(config, prog, argv):
         for patch in patches:
             files = repo[patch].diff.affected
             subsystems = maintainers.get_subsystems_by_files(files)
+    """
 
-    log.info('Identify ignored patches')  # ################################################################### Ignored
+    log.info('Identify ignored patches...')
+    get_ignored(repo, clustering)
+    """
     if 'no-ignored' in argv:
         ignored_patches = None
     elif 'ignored' in argv or not os.path.isfile('resources/linux/ignored.pkl'):
-        ignored_patches = get_ignored(repo, clusters)
+        ignored_patches = get_ignored(repo, clustering)
     else:
         ignored_patches = pickle.load(open('resources/linux/ignored.pkl', 'rb'))
+    """
 
     log.info('Identify patches sent to wrong maintainers…')  # ####################################### Wrong Maintainer
     if 'no-check-maintainer' in argv:

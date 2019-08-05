@@ -379,6 +379,16 @@ def load_maintainers(tag):
     return tag, m
 
 
+def load_pkl_or_execute(filename, command):
+    if os.path.isfile(filename):
+        return pickle.load(open(filename, 'rb'))
+
+    ret = command()
+    pickle.dump(ret, open(filename, 'wb'))
+
+    return ret
+
+
 def evaluate_patches(config, prog, argv):
     global _stats
 
@@ -434,18 +444,26 @@ def evaluate_patches(config, prog, argv):
 
         patches_by_version[tag].add(patch)
 
-    log.info('Loading realevant MAINTAINERS files...')
-    maintainers_version = dict()
-    tags = list(patches_by_version.keys())
-    global _repo
-    _repo = repo
-    p = Pool(processes=cpu_count())
-    for tag, maintainers in tqdm(p.imap_unordered(load_maintainers, tags),
-                                 total=len(tags), desc='MAINTAINERS'):
-        maintainers_version[tag] = maintainers
-    p.close()
-    p.join()
-    _repo = None
+    log.info('Loading relevant MAINTAINERS files...')
+
+    def load_all_maintainers():
+        ret = dict()
+
+        tags = {x[0] for x in repo.tags if not x[0].startswith('v2.6')}
+
+        global _repo
+        _repo = repo
+        p = Pool(processes=cpu_count())
+        for tag, maintainers in tqdm(p.imap_unordered(load_maintainers, tags),
+                                     total=len(tags), desc='MAINTAINERS'):
+            ret[tag] = maintainers
+        p.close()
+        p.join()
+        _repo = None
+        return ret
+
+    maintainers_version = load_pkl_or_execute('resources/linux/resources/maintainers.pkl',
+                                              load_all_maintainers)
 
     log.info('Assigning subsystems to patches...')
     for tag, patches in patches_by_version.items():

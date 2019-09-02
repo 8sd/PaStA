@@ -32,15 +32,7 @@ _repo = None
 _config = None
 _p = None
 
-d_resources = './resources/linux/resources/'
-f_prefix = 'eval_'
-f_suffix = '.pkl'
-
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
-
-
-def f_pkl(fname):
-    return '%s%s%s%s' % (d_resources, f_prefix, fname, f_suffix)
 
 
 def get_relevant_patches(characteristics):
@@ -120,6 +112,7 @@ def get_relevant_patches(characteristics):
 
     return relevant
 
+
 def get_ignored(repo, characteristics, clustering, relevant):
     # Calculate ignored patches
     ignored_patches = {patch for patch in relevant if
@@ -128,9 +121,10 @@ def get_ignored(repo, characteristics, clustering, relevant):
 
     # Calculate ignored patches wrt to other patches in the cluster: A patch is
     # considered as ignored, if all related patches were ignoreed as well
-    ignored_patches_related = {patch for patch in ignored_patches
-                               if False not in [characteristics[x].has_foreign_response == False
-                                                for x in (clustering.get_downstream(patch) & relevant)]}
+    ignored_patches_related = \
+        {patch for patch in ignored_patches if False not in
+         [characteristics[x].has_foreign_response == False
+          for x in (clustering.get_downstream(patch) & relevant)]}
 
     num_relevant = len(relevant)
     num_ignored_patches = len(ignored_patches)
@@ -144,50 +138,6 @@ def get_ignored(repo, characteristics, clustering, relevant):
             (num_ignored_patches_related / num_relevant))
 
     return ignored_patches, ignored_patches_related
-
-    # Create a dictionary list-name -> number of overall patches. We can use it
-    # to calculate a per-list fraction of ignored patches
-
-    #num_patches_on_list = dict()
-    #for patch in relevant:
-    #    lists = repo.mbox.get_lists(patch)
-    #    for mlist in lists:
-    #        if mlist not in num_patches_on_list:
-    #            num_patches_on_list[mlist] = 0
-    #        num_patches_on_list[mlist] += 1
-
-
-    #num_population_accepted = len(population_accepted)
-    #num_population_not_accepted = len(population_not_accepted)
-    #num_population_relevant = len(population_relevant)
-
-    #log.info('  Not first patch in series: %u' % skipped_not_first_patch)
-    #log.info('Not accepted patches: %u' % num_population_not_accepted)
-    #log.info('Accepted patches: %u' % num_population_accepted)
-    #log.info('Num relevant patches: %u' % num_population_relevant)
-
-    #hs_ignored  = count_lists(repo, ignored_patches, 'Highscore lists / ignored patches')
-    #hs_ignored_rel = count_lists(repo, ignored_patches_related,
-    #                             'Highscore lists / ignored patches (related)')
-
-    #def highscore_fraction(highscore, description):
-    #    result = dict()
-    #    for mlist, count in highscore.items():
-    #        result[mlist] = count / num_patches_on_list[mlist]
-
-    #    print(description)
-    #    for mlist, fraction in sorted(result.items(), key = lambda x: x[1]):
-    #        print('  List %s: %0.3f' % (mlist, fraction))
-
-    #highscore_fraction(hs_ignored, 'Highscore fraction ignored patches')
-    #highscore_fraction(hs_ignored_rel,
-    #                   'Highscore fraction ignored patches (related)')
-
-    #dump_messages(os.path.join(d_resources, 'ignored_patches'), repo,
-    #              ignored_patches)
-    #dump_messages(os.path.join(d_resources, 'ignored_patches_related'), repo,
-    #              ignored_patches_related)
-    #dump_messages(os.path.join(d_resources, 'base'), repo, population_relevant)
 
 
 def check_correct_maintainer_patch(c):
@@ -283,8 +233,6 @@ def load_maintainers(tag):
 
 
 def load_pkl_and_update(filename, update_command):
-    filename = f_pkl(filename)
-
     ret = None
     if os.path.isfile(filename):
         ret = pickle.load(open(filename, 'rb'))
@@ -341,7 +289,8 @@ def get_patch_origin(repo, characteristics, messages):
 def dump_messages(filename, repo, messages):
     with open(filename, 'w') as f:
         for message in sorted(messages):
-            f.write('%s\t\t\t%s\n' % (message , ' '.join(sorted(repo.mbox.get_lists(message)))))
+            f.write('%s\t\t\t%s\n' %
+                    (message , ' '.join(sorted(repo.mbox.get_lists(message)))))
 
 
 def dump_characteristics(characteristics, ignored, relevant, filename):
@@ -399,10 +348,8 @@ def evaluate_patches(config, prog, argv):
 
         tags = {x[0] for x in repo.tags if not x[0].startswith('v2.6')}
         tags |= {x[0] for x in repo.tags if x[0].startswith('v2.6.39')}
-        # WORKAROUND:
-        #tags = {x[0] for x in repo.tags if x[0].startswith('v5.')}
 
-        # Only load what's not already cached
+        # Only load what's not yet cached
         tags -= ret.keys()
 
         if len(tags) == 0:
@@ -436,19 +383,25 @@ def evaluate_patches(config, prog, argv):
         return {**ret, **foo}, True
 
     log.info('Loading/Updating MAINTAINERS...')
-    maintainers_version = load_pkl_and_update('maintainers', load_all_maintainers)
+    maintainers_version = load_pkl_and_update(config.f_maintainers_pkl,
+                                              load_all_maintainers)
 
     log.info('Loading/Updating Linux patch characteristics...')
-    characteristics = load_pkl_and_update('characteristics', load_characteristics)
+    characteristics = load_pkl_and_update(config.f_characteristics_pkl,
+                                          load_characteristics)
 
     relevant = get_relevant_patches(characteristics)
 
     get_patch_origin(repo, characteristics, all_messages_in_time_window)
 
     log.info('Identify ignored patches...')
-    ignored_patches, ignored_patches_related = get_ignored(repo, characteristics, clustering, relevant)
+    ignored_patches, ignored_patches_related = get_ignored(repo,
+                                                           characteristics,
+                                                           clustering,
+                                                           relevant)
 
     log.info('Checking correct maintainers...')
     check_correct_maintainer(repo, characteristics, patches)
 
-    dump_characteristics(characteristics, ignored_patches_related, relevant, os.path.join(d_resources, 'characteristics.raw'))
+    dump_characteristics(characteristics, ignored_patches_related, relevant,
+                         config.f_characteristics)

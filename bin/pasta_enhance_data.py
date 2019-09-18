@@ -162,7 +162,7 @@ def build_patch_data():
     else:
         results = []
         for p in tqdm(load.items()):
-            results.add(get_data_of_patch(p))
+            results.append(get_data_of_patch(p))
 
     log.info(' … patch data built. There are ' + str(len(results)) + ' patches')
     patch_data = pd.DataFrame(results)

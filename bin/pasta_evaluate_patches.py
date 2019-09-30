@@ -1,7 +1,7 @@
 """
 PaStA - Patch Stack Analysis
 
-Copyright (C) 2019, Bayerische Motoren Werke Aktiengesellschaft (BMW AG)
+Copyright (c) 2019, Bayerische Motoren Werke Aktiengesellschaft (BMW AG)
 Copyright (c) OTH Regensburg, 2019
 
 Authors:

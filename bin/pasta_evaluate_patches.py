@@ -24,7 +24,7 @@ from subprocess import call
 from tqdm import tqdm
 
 from pypasta.LinuxMaintainers import LinuxMaintainers
-from pypasta.LinuxMailCharacteristics import load_linux_mail_characteristics
+from pypasta.LinuxMailCharacteristics import load_linux_mail_characteristics, TAGS, add_or_create
 
 log = getLogger(__name__[-15:])
 
@@ -33,6 +33,14 @@ _config = None
 _p = None
 
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
+
+
+# https://stackoverflow.com/a/28185923
+def countNodes(tree):
+    count = 1
+    for child in tree.children:
+        count += countNodes(child)
+    return count
 
 
 def get_relevant_patches(characteristics):
@@ -140,7 +148,7 @@ def get_ignored(characteristics, clustering, relevant):
              (num_ignored_patches / num_relevant))
     log.info('Found %u ignored patches (related)' % num_ignored_patches_related)
     log.info('Fraction of ignored related patches: %0.3f' %
-            (num_ignored_patches_related / num_relevant))
+             (num_ignored_patches_related / num_relevant))
 
     return ignored_patches, ignored_patches_related
 
@@ -148,21 +156,21 @@ def get_ignored(characteristics, clustering, relevant):
 def check_correct_maintainer_patch(c):
     # Metric: All lists + at least one maintainer per subsystem
     # needs to be addressed correctly
-    #if (not c.mtrs_has_lists or c.mtrs_has_list_per_subsystem) and \
+    # if (not c.mtrs_has_lists or c.mtrs_has_list_per_subsystem) and \
     #   (not c.mtrs_has_maintainers or c.mtrs_has_maintainer_per_subsystem):
     #    return True
 
     # Metric: At least one correct list + at least one correct maintainer
-    #if (not c.mtrs_has_lists or c.mtrs_has_one_correct_list) and \
+    # if (not c.mtrs_has_lists or c.mtrs_has_one_correct_list) and \
     #   (not c.mtrs_has_maintainers or c.mtrs_has_one_correct_maintainer):
     #    return True
 
     # Metric: One correct list + one maintainer per subsystem
-    #if (not c.mtrs_has_lists or c.mtrs_has_one_correct_list) and c.mtrs_has_maintainer_per_subsystem:
+    # if (not c.mtrs_has_lists or c.mtrs_has_one_correct_list) and c.mtrs_has_maintainer_per_subsystem:
     #    return True
 
     # Metric: One correct list
-    #if (not c.mtrs_has_lists or has_one_correct_list):
+    # if (not c.mtrs_has_lists or has_one_correct_list):
     #    return True
 
     # Metric: One correct list or one correct maintainer
@@ -207,10 +215,74 @@ def load_pkl_and_update(filename, update_command):
     return ret
 
 
-def dump_characteristics(characteristics, ignored, relevant, filename):
+def load_subsystems(subsystems, tags, patch_data):
+    for patch in patch_data:
+        add_or_create(tags, patch['kv'])
+        for subsystem in patch['subsystems']:
+            add_or_create(subsystems, subsystem, [patch])
+
+
+def get_most_current_maintainers(subsystem, maintainers):
+    tags = sorted(maintainers.keys(), reverse=True)
+    for tag in tags:
+        try:
+            return maintainers[tag].subsystems[subsystem]
+        except KeyError:
+            continue
+    raise KeyError('Subsystem ' + subsystem +  'not found')
+
+def dump_subsystems(subsystems, filename, maintainers, tags):
+
     with open(filename, 'w') as csv_file:
-        csv_fields = ['id', 'from', 'recipients', 'lists', 'kv', 'rc',
-                      'upstream', 'ignored', 'time', 'mtrs_correct']
+        csv_fields = ['subsystem', 'status', 'extra ml', 'total', 'accepted', 'ignored'] + \
+                     sum(map(lambda x: ['total' + x, 'accepted' + x, 'ignored' + x], tags.keys()), [])
+        writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+        writer.writeheader()
+        for subsystem, patches in subsystems.items():
+            subsys = get_most_current_maintainers(subsystem, maintainers)
+            status = '; '.join(map(lambda s: s.value, subsys.status))
+            extra_ml = subsys.list if len(subsys.list) is 0 else ''
+
+            row = {
+                'subsystem': subsystem,
+                'status': status,
+                'extra ml': extra_ml
+            }
+
+            count_total = dict()
+            count_accepted = dict()
+            count_ignored = dict()
+
+            for patch in patches:
+                add_or_create(count_total, '')
+                add_or_create(count_total, patch['kv'])
+                if patch['upstream']:
+                    add_or_create(count_accepted, '')
+                    add_or_create(count_accepted, patch['kv'])
+                if patch['ignored']:
+                    add_or_create(count_ignored, '')
+                    add_or_create(count_ignored, patch['kv'])
+
+            for kv, total in count_total.items():
+                row['total' + kv] = total
+            for kv, accepted in count_accepted.items():
+                row['accepted' + kv] = accepted
+            for kv, ingored in count_ignored.items():
+                row['ignored' + kv] = ingored
+
+            writer.writerow(row)
+
+
+def dump_characteristics(characteristics, ignored, relevant, filename):
+    dump = []
+    with open(filename, 'w') as csv_file:
+        csv_fields = ['id', 'subject', 'from', 'from_name', 'from_mail', 'recipients', 'recipients_human',
+                      'recipients_lists', '#recipients', '#recipients_human', '#recipients_lists', 'subsystems',
+                      'lists', 'maintainers', 'reviewers', 'kv', 'rc', 'upstream', 'ignored', 'time', '#locs', '#files',
+                      '#chunks_in', '#chunks_out', 'first id in thread', 'is first mail in thread', 'len_thread',
+                      'patch series size', 'versions of patch', 'version of patch', 'mtrs_correct'] + TAGS + \
+                     ['#' + x for x in TAGS]
+
         writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
         writer.writeheader()
 
@@ -224,22 +296,81 @@ def dump_characteristics(characteristics, ignored, relevant, filename):
                 rc = int(tag[1])
 
             mail_from = c.mail_from[1]
+
             recipients = ' '.join(sorted(c.recipients))
+            recipients_human = c.recipients_human
+            recipients_lists = c.recipients_lists
+
+            subsystems = []
+            lists = []
+            maintainers = []
+            reviews = []
+            for subsystem, t in c.maintainers.items():
+                subsystems.append(subsystem)
+                if len(t[0]) is not 0:
+                    lists.append(t[0])
+                if len(t[1]) is not 0:
+                    maintainers.append(t[1])
+                if len(t[2]) is not 0:
+                    reviews.append(t[2])
+
             lists = ' '.join(sorted(c.lists))
             mtrs_correct = check_correct_maintainer_patch(c)
 
+            diff_stat = c.diff.diff.diff_stat()
+
+            _res = re.findall('^\[.*[0-9]+\/[0-9]+\]', c.subject)
+            if _res:
+                patch_series_size = int(re.findall('[0-9]+', _res[0])[-1])
+            else:
+                patch_series_size = 0
+
+            # extract older versions of the patch
+            older = set()
+            for p in c.cluster:
+                if characteristics[p].date < c.date:
+                    older.add(p)
+
             row = {'id': patch,
+                   'subject': c.subject,
                    'from': mail_from,
+                   'from_name': c.mail_from[0],
+                   'from_mail': c.mail_from[1],
                    'recipients': recipients,
-                   'lists' : lists,
+                   'recipients_human': recipients_human,
+                   'recipients_lists': recipients_lists,
+                   '#recipients': len(c.recipients),
+                   '#recipients_human': len(recipients_human),
+                   '#recipients_lists': len(recipients_lists),
+                   'subsystems': subsystems,
+                   'lists': lists,
+                   'maintainers': maintainers,
+                   'reviewers': reviews,
                    'kv': kv,
                    'rc': rc,
                    'upstream': c.is_upstream,
                    'ignored': patch in ignored,
                    'time': c.date,
+                   '#locs': c.diff.diff.lines,
+                   '#files': len(c.diff.diff.affected),
+                   '#chunks_in': diff_stat[0],
+                   '#chunks_out': diff_stat[1],
+                   'first id in thread': c.thread.name,
+                   'is first mail in thread': c.thread.name == patch,
+                   'len_thread': countNodes(c.thread),
+                   'patch series size': patch_series_size,
+                   'versions of patch': len(c.cluster),
+                   'version of patch': len(older) + 1,
                    'mtrs_correct': mtrs_correct}
 
+            for tag in TAGS:
+                row[tag] = c.tags[tag]
+                row['#' + tag] = len(c.tags[tag])
+
+            dump.append(row)
             writer.writerow(row)
+    pickle.dump(dump, open(filename + '.pkl', 'wb'))
+    return dump
 
 
 def evaluate_patches(config, prog, argv):
@@ -307,18 +438,34 @@ def evaluate_patches(config, prog, argv):
     maintainers_version = load_pkl_and_update(config.f_maintainers_pkl,
                                               load_all_maintainers)
 
-    log.info('Loading/Updating Linux patch characteristics...')
-    characteristics = load_pkl_and_update(config.f_characteristics_pkl,
-                                          load_characteristics)
+    if '--load-patches' in argv:
+        patch_data = pickle.load(open(config.f_characteristics + '.pkl', 'rb'))
+    else:
 
-    relevant = get_relevant_patches(characteristics)
+        log.info('Loading/Updating Linux patch characteristics...')
+        characteristics = load_pkl_and_update(config.f_characteristics_pkl,
+                                              load_characteristics)
 
-    log.info('Identify ignored patches...')
-    ignored_patches, ignored_patches_related = get_ignored(characteristics,
-                                                           clustering,
-                                                           relevant)
+        relevant = get_relevant_patches(characteristics)
 
-    dump_characteristics(characteristics, ignored_patches_related, relevant,
-                         config.f_characteristics)
+        log.info('Identify ignored patches...')
+        ignored_patches, ignored_patches_related = get_ignored(characteristics,
+                                                               clustering,
+                                                               relevant)
+
+        patch_data = dump_characteristics(characteristics, ignored_patches_related, relevant,
+                                          config.f_characteristics)
+
+    # TODO Clean
+
+    if '--subsystem' in argv:
+        subsystems = dict()
+        tags = dict()
+        load_subsystems(subsystems, tags, patch_data)
+
+        filename = config.f_characteristics.split('.')
+        filename [-2] += '_subsystem'
+
+        dump_subsystems(subsystems, '.'.join(filename) , maintainers_version, tags)
 
     call(['./R/evaluate_patches.R', config.d_rout, config.f_characteristics])

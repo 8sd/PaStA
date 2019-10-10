@@ -231,8 +231,8 @@ def get_most_current_maintainers(subsystem, maintainers):
             continue
     raise KeyError('Subsystem ' + subsystem +  'not found')
 
-def dump_subsystems(subsystems, filename, maintainers, tags):
 
+def dump_subsystems(subsystems, filename, maintainers, tags):
     with open(filename, 'w') as csv_file:
         csv_fields = ['subsystem', 'status', 'extra ml', 'total', 'accepted', 'ignored'] + \
                      sum(map(lambda x: ['total' + x, 'accepted' + x, 'ignored' + x], tags.keys()), [])
@@ -373,6 +373,59 @@ def dump_characteristics(characteristics, ignored, relevant, filename):
     return dump
 
 
+def load_authors(authors, patch_data):
+    for patch in patch_data:
+        add_or_create(authors, patch['from'], [patch])
+
+
+def dump_authors(authors, filename):
+    with open(filename, 'w') as csv_file:
+        csv_fields = ['author', 'name', 'mail', 'commit acceptance experience', 'commit experience', 'mails sent',
+                      '#mails sent', 'company', 'tld', 'sex', 'ethnics']
+        writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+        writer.writeheader()
+
+        for author, patches in authors.items():
+
+            commit_acceptance_experience = 0
+            commit_experience = 0
+            for patch in patches:
+                commit_experience += 1
+                if patch['upstream']:
+                    commit_acceptance_experience += 1
+
+            company = ''
+            tld = ''
+            try:
+                glob = re.findall('@.+', patches[0]['from_mail'])
+                if glob:
+                    splits = glob[0].split('.')
+                    company = '.'.join(splits[:-1])[1:]
+                    tld = splits[-1]
+            except:
+                print('tld, company: ' + patches[0]['from_mail'])
+
+            sex = '' #TODO
+            ethnics = '' #TODO
+
+            row = {
+                'author': author,
+                'name': patches[0]['from_name'],
+                'mail': patches[0]['from_mail'],
+                'commit acceptance experience': commit_acceptance_experience,
+                'commit experience': commit_experience,
+#                'mails sent': mails_sent,
+#                '#mails sent': len(mails_sent),
+                'company': company,
+                'tld': tld,
+                'sex': sex,
+                'ethnics': ethnics
+            }
+
+            writer.writerow(row)
+
+
+
 def evaluate_patches(config, prog, argv):
     if config.mode != config.Mode.MBOX:
         log.error('Only works in Mbox mode!')
@@ -467,5 +520,14 @@ def evaluate_patches(config, prog, argv):
         filename [-2] += '_subsystem'
 
         dump_subsystems(subsystems, '.'.join(filename) , maintainers_version, tags)
+
+    if '--authors' in argv:
+        authors = dict()
+        load_authors(authors, patch_data)
+
+        filename = config.f_characteristics.split('.')
+        filename [-2] += '_authors'
+
+        dump_authors(authors, '.'.join(filename))
 
     call(['./R/evaluate_patches.R', config.d_rout, config.f_characteristics])

@@ -196,6 +196,17 @@ class Diff:
 
         self.affected.discard('/dev/null')
 
+    def diff_stat(self):
+        added = 0
+        deleted = 0
+
+        for _, patch in self.patches.items():
+            for _, hunk in patch.hunks.items():
+                added += len(hunk.insertions)
+                deleted += len(hunk.deletions)
+
+        return added, deleted
+
     def split_footer(self):
         if self.footer > 0:
             diff = self.raw[:-self.footer]

@@ -24,7 +24,7 @@ from subprocess import call
 from tqdm import tqdm
 
 from pypasta.LinuxMaintainers import LinuxMaintainers
-from pypasta.LinuxMailCharacteristics import load_linux_mail_characteristics, TAGS, add_or_create
+from pypasta.LinuxMailCharacteristics import load_linux_mail_characteristics, TAGS, add_or_create, email_get_from
 
 log = getLogger(__name__[-15:])
 
@@ -373,57 +373,66 @@ def dump_characteristics(characteristics, ignored, relevant, filename):
     return dump
 
 
-def load_authors(authors, patch_data):
+def load_authors(authors, authors_mail, patch_data, repo):
     for patch in patch_data:
         add_or_create(authors, patch['from'], [patch])
 
+    all_mails = repo.mbox.message_ids(allow_invalid=True)
+    for mail_id in all_mails:
+        mails = repo.mbox.get_messages(mail_id)
+        if len(mails) is 0:
+            continue
+        author = email_get_from(mails[0])
+        add_or_create(authors_mail, author[1])
 
-def dump_authors(authors, filename):
-    with open(filename, 'w') as csv_file:
-        csv_fields = ['author', 'name', 'mail', 'commit acceptance experience', 'commit experience', 'mails sent',
-                      '#mails sent', 'company', 'tld', 'sex', 'ethnics']
-        writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
-        writer.writeheader()
 
-        for author, patches in authors.items():
+def dump_authors(authors, authors_mail, filename):
+    #with Namsor('resources/namsor.cache') as namsor:
+        with open(filename, 'w') as csv_file:
+            csv_fields = ['author', 'name', 'mail', 'commit acceptance experience', 'commit experience', '#mails sent',
+                          'company', 'tld', 'sex', 'ethnics', 'country']
+            writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+            writer.writeheader()
 
-            commit_acceptance_experience = 0
-            commit_experience = 0
-            for patch in patches:
-                commit_experience += 1
-                if patch['upstream']:
-                    commit_acceptance_experience += 1
+            for author, patches in authors.items():
 
-            company = ''
-            tld = ''
-            try:
-                glob = re.findall('@.+', patches[0]['from_mail'])
-                if glob:
-                    splits = glob[0].split('.')
-                    company = '.'.join(splits[:-1])[1:]
-                    tld = splits[-1]
-            except:
-                print('tld, company: ' + patches[0]['from_mail'])
+                commit_acceptance_experience = 0
+                commit_experience = 0
+                for patch in patches:
+                    commit_experience += 1
+                    if patch['upstream']:
+                        commit_acceptance_experience += 1
 
-            sex = '' #TODO
-            ethnics = '' #TODO
+                company = ''
+                tld = ''
+                try:
+                    glob = re.findall('@.+', patches[0]['from_mail'])
+                    if glob:
+                        splits = glob[0].split('.')
+                        company = '.'.join(splits[:-1])[1:]
+                        tld = splits[-1]
+                except:
+                    print('tld, company: ' + patches[0]['from_mail'])
 
-            row = {
-                'author': author,
-                'name': patches[0]['from_name'],
-                'mail': patches[0]['from_mail'],
-                'commit acceptance experience': commit_acceptance_experience,
-                'commit experience': commit_experience,
-#                'mails sent': mails_sent,
-#                '#mails sent': len(mails_sent),
-                'company': company,
-                'tld': tld,
-                'sex': sex,
-                'ethnics': ethnics
-            }
+                sex = '' #namsor.get_gender(patches[0]['from_name'])
+                ethnics = '' #namsor.get_ethnicity(patches[0]['from_name'])
+                country = '' #namsor.get_country(patches[0]['from_name'])
 
-            writer.writerow(row)
+                row = {
+                    'author': author,
+                    'name': patches[0]['from_name'],
+                    'mail': patches[0]['from_mail'],
+                    'commit acceptance experience': commit_acceptance_experience,
+                    'commit experience': commit_experience,
+                    '#mails sent': authors_mail[author],
+                    'company': company,
+                    'tld': tld,
+                    'sex': sex,
+                    'ethnics': ethnics,
+                    'country': country
+                }
 
+                writer.writerow(row)
 
 
 def evaluate_patches(config, prog, argv):
@@ -487,9 +496,10 @@ def evaluate_patches(config, prog, argv):
 
         return {**ret, **missing}, True
 
-    log.info('Loading/Updating MAINTAINERS...')
-    maintainers_version = load_pkl_and_update(config.f_maintainers_pkl,
-                                              load_all_maintainers)
+    if '--subsystem' in argv or '--load-patches' not in argv:
+        log.info('Loading/Updating MAINTAINERS...')
+        maintainers_version = load_pkl_and_update(config.f_maintainers_pkl,
+                                                  load_all_maintainers)
 
     if '--load-patches' in argv:
         patch_data = pickle.load(open(config.f_characteristics + '.pkl', 'rb'))
@@ -512,6 +522,7 @@ def evaluate_patches(config, prog, argv):
     # TODO Clean
 
     if '--subsystem' in argv:
+        log.info('Loading Subsystems...')
         subsystems = dict()
         tags = dict()
         load_subsystems(subsystems, tags, patch_data)
@@ -522,12 +533,14 @@ def evaluate_patches(config, prog, argv):
         dump_subsystems(subsystems, '.'.join(filename) , maintainers_version, tags)
 
     if '--authors' in argv:
+        log.info('Loading Authors...')
         authors = dict()
-        load_authors(authors, patch_data)
+        authors_mail = dict()
+        load_authors(authors, authors_mail, patch_data, repo)
 
         filename = config.f_characteristics.split('.')
         filename [-2] += '_authors'
 
-        dump_authors(authors, '.'.join(filename))
+        dump_authors(authors, authors_mail, '.'.join(filename))
 
     call(['./R/evaluate_patches.R', config.d_rout, config.f_characteristics])

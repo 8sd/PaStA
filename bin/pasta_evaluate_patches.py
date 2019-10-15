@@ -219,6 +219,9 @@ def load_subsystems(subsystems, tags, patch_data):
     for patch in patch_data:
         add_or_create(tags, patch['kv'])
         for subsystem in patch['subsystems']:
+            # TODO check if mailing list is in recipients
+            # TODO add reference to patch not path itself
+            # TODO check if answer from subsystem
             add_or_create(subsystems, subsystem, [patch])
 
 
@@ -226,7 +229,7 @@ def get_most_current_maintainers(subsystem, maintainers):
     tags = sorted(maintainers.keys(), reverse=True)
     for tag in tags:
         try:
-            return maintainers[tag].subsystems[subsystem]
+            return maintainers[tag].subsystems[subsystem] # TODO return tag
         except KeyError:
             continue
     raise KeyError('Subsystem ' + subsystem +  'not found')
@@ -521,7 +524,7 @@ def evaluate_patches(config, prog, argv):
 
     # TODO Clean
 
-    if '--subsystem' in argv:
+    if '--subsystems' in argv:
         log.info('Loading Subsystems...')
         subsystems = dict()
         tags = dict()

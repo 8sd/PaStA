@@ -127,7 +127,7 @@ def email_get_recipients(message):
 
 def email_get_header_normalised(message, header):
     header = str(message[header] or '').lower()
-    header = header.replace('\n', '').replace('', ' ')
+    header = header.replace('\n', '').replace('\t', ' ')
 
     return header
 

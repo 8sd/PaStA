@@ -91,7 +91,7 @@ MAILING_LISTS = ['devel@acpica.org', 'alsa-devel@alsa-project.org', 'clang-built
                  'linux-rdma@vger.kernel.org', 'linux-remoteproc@vger.kernel.org', 'linux-renesas-soc@vger.kernel.org',
                  'linux-rtc@vger.kernel.org', 'linux-s390@vger.kernel.org', 'linux-samsung-soc@vger.kernel.org',
                  'linux-scsi@vger.kernel.org', 'linux-sctp@vger.kernel.org', 'linux-security-module@vger.kernel.org',
-                 'linux-serial@vger.kernel.org',  'linux-sgx@vger.kernel.org', 'linux-sh@vger.kernel.org',
+                 'linux-serial@vger.kernel.org', 'linux-sgx@vger.kernel.org', 'linux-sh@vger.kernel.org',
                  'linux-sparse@vger.kernel.org', 'linux-spi@vger.kernel.org', 'linux-tegra@vger.kernel.org',
                  'linux-tip-commits@vger.kernel.org', 'linux-trace-devel@vger.kernel.org',
                  'linux-unionfs@vger.kernel.org', 'linux-usb@vger.kernel.org', 'linux-watchdog@vger.kernel.org',
@@ -99,10 +99,10 @@ MAILING_LISTS = ['devel@acpica.org', 'alsa-devel@alsa-project.org', 'clang-built
                  'live-patching@vger.kernel.org', 'lvs-devel@vger.kernel.org', 'netdev@vger.kernel.org',
                  'netfilter-devel@vger.kernel.org', 'platform-driver-x86@vger.kernel.org',
                  'reiserfs-devel@vger.kernel.org', 'selinux@vger.kernel.org', 'sparclinux@vger.kernel.org',
-                 'stable@vger.kernel.org','target-devel@vger.kernel.org', 'util-linux@vger.kernel.org',
+                 'stable@vger.kernel.org', 'target-devel@vger.kernel.org', 'util-linux@vger.kernel.org',
                  'xdp-newbies@vger.kernel.org']
 
-TAGS = ['signed-off-by', 'acked-by', 'co-developed-by'] # TODO store somewhere else?
+TAGS = ['signed-off-by', 'acked-by', 'co-developed-by']  # TODO store somewhere else?
 
 
 def add_or_create(d, k, v=1):
@@ -127,7 +127,7 @@ def email_get_recipients(message):
 
 def email_get_header_normalised(message, header):
     header = str(message[header] or '').lower()
-    header = header.replace('\n', '').replace('', ' ')
+    header = header.replace('\n', '').replace('\t', ' ')
 
     return header
 
@@ -207,7 +207,7 @@ class LinuxMailCharacteristics:
 
         # The Tip bot
         if 'tipbot@zytor.com' in email or \
-           'noreply@ciplatform.org' in email:
+                'noreply@ciplatform.org' in email:
             return True
 
         if message['X-Mailer'] == 'tip-git-log-daemon':
@@ -296,8 +296,8 @@ class LinuxMailCharacteristics:
 
     def _is_stable_review(self, message, patch):
         if 'X-Mailer' in message and \
-           'LinuxStableQueue' in message['X-Mailer']:
-               return True
+                'LinuxStableQueue' in message['X-Mailer']:
+            return True
 
         if 'X-stable' in message:
             xstable = message['X-stable'].lower()
@@ -331,7 +331,7 @@ class LinuxMailCharacteristics:
         for affected in patch.diff.affected:
             if True in map(lambda x: affected.startswith(x),
                            LinuxMailCharacteristics.ROOT_DIRS) or \
-               affected in LinuxMailCharacteristics.ROOT_FILES:
+                    affected in LinuxMailCharacteristics.ROOT_FILES:
                 continue
 
             return False
@@ -350,10 +350,10 @@ class LinuxMailCharacteristics:
     def _analyse_series(self, thread, message):
         if self.is_patch:
             if self.message_id == thread.name or \
-               self.message_id in [x.name for x in thread.children]:
+                    self.message_id in [x.name for x in thread.children]:
                 self.is_first_patch_in_thread = True
         elif 'Subject' in message and \
-             LinuxMailCharacteristics.REGEX_COVER.match(str(message['Subject'])):
+                LinuxMailCharacteristics.REGEX_COVER.match(str(message['Subject'])):
             self.is_cover_letter = True
 
     def __init__(self, repo, maintainers_version, clustering, message_id):
@@ -465,7 +465,7 @@ def load_linux_mail_characteristics(repo, message_ids,
 
     ret = []
     ret = p.map(_load_mail_characteristic, message_ids, chunksize=1000)
-    #for id in tqdm(message_ids):
+    # for id in tqdm(message_ids):
     #    ret.append(_load_mail_characteristic(id))
     ret = dict(ret)
     print('Done')

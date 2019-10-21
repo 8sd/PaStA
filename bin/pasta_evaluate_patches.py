@@ -34,7 +34,41 @@ _p = None
 
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
 
-monitored = []
+monitored = [
+    'linux-amlogic@lists.infradead.org',
+    'linux-arm-kernel@lists.infradead.org',
+    'linux-i3c@lists.infradead.org',
+    'linux-mtd@lists.infradead.org',
+    'linux-riscv@lists.infradead.org',
+    'linuxppc-dev@lists.ozlabs.org',
+    'cocci@systeme.lip6.fr',
+    'linux-block@vger.kernel.org',
+    'linux-bluetooth@vger.kernel.org',
+    'linux-btrfs@vger.kernel.org',
+    'linux-cifs@vger.kernel.org',
+    'linux-clk@vger.kernel.org',
+    'linux-crypto@vger.kernel.org',
+    'linux-ext4@vger.kernel.org',
+    'linux-fsdevel@vger.kernel.org',
+    'linux-hwmon@vger.kernel.org',
+    'linux-iio@vger.kernel.org',
+    'linux-integrity@vger.kernel.org',
+    'linux-kernel@vger.kernel.org',
+    'linux-media@vger.kernel.org',
+    'linux-mips@vger.kernel.org',
+    'linux-modules@vger.kernel.org',
+    'linux-next@vger.kernel.org',
+    'linux-nfs@vger.kernel.org',
+    'linux-parisc@vger.kernel.org',
+    'linux-pci@vger.kernel.org',
+    'linux-renesas-soc@vger.kernel.org',
+    'linux-rtc@vger.kernel.org',
+    'linux-security-module@vger.kernel.org',
+    'linux-sgx@vger.kernel.org',
+    'linux-trace-devel@vger.kernel.org',
+    'linux-watchdog@vger.kernel.org',
+    'linux-wireless@vger.kernel.org',
+    'netdev@vger.kernel.org	']
 maintainers_cache = dict()
 
 stats = dict()
@@ -258,6 +292,8 @@ def load_subsystems(subsystems, tags, patch_data, maintainers):
                 continue
             # TODO add reference to patch not path itself
             add_or_create(subsystems, subsystem, [patch])
+    print('unmonitored: ' + str(stats['subsystem is not monitored']))
+    print('unaddressed: ' + str(stats['subsystem is not addressed']))
 
 
 def dump_subsystems(subsystems, filename, maintainers, tags):

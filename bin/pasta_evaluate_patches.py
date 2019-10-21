@@ -627,6 +627,14 @@ def evaluate_patches(config, prog, argv):
                                           config.f_characteristics)
 
     # TODO Clean
+    patch_data_tmp = list()
+    for patch in patch_data:
+        if patch['from_mail'] == 'baolex.ni@intel.com':
+            add_or_create(stats, 'baole')
+            continue
+        patch_data_tmp.append(patch)
+    patch_data = patch_data_tmp
+    print('Baole: ' + str(stats['baole']))
 
     if '--subsystems' in argv:
         log.info('Loading Subsystems...')

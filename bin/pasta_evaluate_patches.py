@@ -34,6 +34,10 @@ _p = None
 
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
 
+monitored = []
+maintainers_cache = dict()
+
+stats = dict()
 
 # https://stackoverflow.com/a/28185923
 def countNodes(tree):
@@ -41,6 +45,19 @@ def countNodes(tree):
     for child in tree.children:
         count += countNodes(child)
     return count
+
+
+def get_most_current_maintainers(subsystem, maintainers):
+    if subsystem in maintainers_cache.keys():
+        return maintainers_cache[subsystem]
+    tags = sorted(maintainers.keys(), reverse=True)
+    for tag in tags:
+        try:
+            maintainers_cache[subsystem] = maintainers[tag].subsystems[subsystem] # TODO return tag
+            return maintainers_cache[subsystem]
+        except KeyError:
+            continue
+    raise KeyError('Subsystem ' + subsystem +  'not found')
 
 
 def get_relevant_patches(characteristics):
@@ -215,24 +232,32 @@ def load_pkl_and_update(filename, update_command):
     return ret
 
 
-def load_subsystems(subsystems, tags, patch_data):
+def is_subsystem_monitored(m):
+    for l in m.list:
+        if l not in monitored:
+            return False
+    return True
+
+
+def is_subsystem_addressed(patch, m):
+    mains = set()
+    for mail in m.mail:
+        mains.add(mail[1])
+    return len(set(patch['recipients'].split(' ')) & (m.list | mains)) is not 0
+
+def load_subsystems(subsystems, tags, patch_data, maintainers):
     for patch in patch_data:
         add_or_create(tags, patch['kv'])
         for subsystem in patch['subsystems']:
-            # TODO check if mailing list is in recipients
+            m = get_most_current_maintainers(subsystem, maintainers)
+            if not is_subsystem_monitored(m):
+                add_or_create(stats, 'subsystem is not monitored')
+                continue
+            if not is_subsystem_addressed(patch, m):
+                add_or_create(stats, 'subsystem is not addressed')
+                continue
             # TODO add reference to patch not path itself
-            # TODO check if answer from subsystem
             add_or_create(subsystems, subsystem, [patch])
-
-
-def get_most_current_maintainers(subsystem, maintainers):
-    tags = sorted(maintainers.keys(), reverse=True)
-    for tag in tags:
-        try:
-            return maintainers[tag].subsystems[subsystem] # TODO return tag
-        except KeyError:
-            continue
-    raise KeyError('Subsystem ' + subsystem +  'not found')
 
 
 def dump_subsystems(subsystems, filename, maintainers, tags):
@@ -438,6 +463,49 @@ def dump_authors(authors, authors_mail, filename):
                 writer.writerow(row)
 
 
+def load_lists(lists, patch_data, tags):
+    for patch in patch_data:
+        add_or_create(tags, patch['kv'])
+        for list in patch['recipients_lists']:
+            add_or_create(lists, list, [patch])
+
+
+def dump_lists(lists, filename, tags):
+    with open(filename, 'w') as csv_file:
+        csv_fields = ['list', 'total', 'accepted', 'ignored'] + \
+                     sum(map(lambda x: ['total' + x, 'accepted' + x, 'ignored' + x], tags.keys()), [])
+        writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+        writer.writeheader()
+        for list, patches in lists.items():
+
+            row = {
+                'list': list
+            }
+
+            count_total = dict()
+            count_accepted = dict()
+            count_ignored = dict()
+
+            for patch in patches:
+                add_or_create(count_total, '')
+                add_or_create(count_total, patch['kv'])
+                if patch['upstream']:
+                    add_or_create(count_accepted, '')
+                    add_or_create(count_accepted, patch['kv'])
+                if patch['ignored']:
+                    add_or_create(count_ignored, '')
+                    add_or_create(count_ignored, patch['kv'])
+
+            for kv, total in count_total.items():
+                row['total' + kv] = total
+            for kv, accepted in count_accepted.items():
+                row['accepted' + kv] = accepted
+            for kv, ingored in count_ignored.items():
+                row['ignored' + kv] = ingored
+
+            writer.writerow(row)
+
+
 def evaluate_patches(config, prog, argv):
     if config.mode != config.Mode.MBOX:
         log.error('Only works in Mbox mode!')
@@ -499,7 +567,7 @@ def evaluate_patches(config, prog, argv):
 
         return {**ret, **missing}, True
 
-    if '--subsystem' in argv or '--load-patches' not in argv:
+    if '--subsystems' in argv or '--load-patches' not in argv:
         log.info('Loading/Updating MAINTAINERS...')
         maintainers_version = load_pkl_and_update(config.f_maintainers_pkl,
                                                   load_all_maintainers)
@@ -528,7 +596,7 @@ def evaluate_patches(config, prog, argv):
         log.info('Loading Subsystems...')
         subsystems = dict()
         tags = dict()
-        load_subsystems(subsystems, tags, patch_data)
+        load_subsystems(subsystems, tags, patch_data, maintainers_version)
 
         filename = config.f_characteristics.split('.')
         filename [-2] += '_subsystem'
@@ -545,5 +613,16 @@ def evaluate_patches(config, prog, argv):
         filename [-2] += '_authors'
 
         dump_authors(authors, authors_mail, '.'.join(filename))
+
+    if '--lists' in argv:
+        log.info('Loading lists...')
+        lists = dict()
+        tags = dict()
+        load_lists(lists, patch_data, tags)
+
+        filename = config.f_characteristics.split('.')
+        filename [-2] += '_lists'
+
+        dump_lists(lists, '.'.join(filename), tags)
 
     call(['./R/evaluate_patches.R', config.d_rout, config.f_characteristics])

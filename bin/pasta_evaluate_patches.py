@@ -33,6 +33,7 @@ _config = None
 _p = None
 
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
+addressed = set()
 
 monitored = [
     'linux-amlogic@lists.infradead.org',
@@ -280,21 +281,28 @@ def is_subsystem_addressed(patch, m):
     return len(set(patch['recipients'].split(' ')) & (m.list | mains)) is not 0
 
 def load_subsystems(subsystems, tags, patch_data, maintainers):
+    global verb
     for patch in patch_data:
         add_or_create(tags, patch['kv'])
         for subsystem in patch['subsystems']:
+            add_or_create(stats, 'analyzed patch/subsystem')
             m = get_most_current_maintainers(subsystem, maintainers)
+            if not is_subsystem_addressed(patch, m):
+                add_or_create(stats, 'subsystem is not addressed: ' + subsystem)
+                addressed.add((subsystem, patch['id'], patch['subject']))
+                continue
             if not is_subsystem_monitored(m):
                 add_or_create(stats, 'subsystem is not monitored')
                 continue
-            if not is_subsystem_addressed(patch, m):
-                add_or_create(stats, 'subsystem is not addressed')
-                continue
             # TODO add reference to patch not path itself
             add_or_create(subsystems, subsystem, [patch])
-    print('unmonitored: ' + str(stats['subsystem is not monitored']))
-    print('unaddressed: ' + str(stats['subsystem is not addressed']))
+    for k, v in stats.items():
+        print(k + ': ' + str(v))
 
+    print('-------------------------------')
+    for a, b, c in addressed:
+        print('"' + a + '":"' + b + '":"' + c + '"')
+    print('-------------------------------')
 
 def dump_subsystems(subsystems, filename, maintainers, tags):
     with open(filename, 'w') as csv_file:
@@ -503,7 +511,8 @@ def load_lists(lists, patch_data, tags):
     for patch in patch_data:
         add_or_create(tags, patch['kv'])
         for list in patch['recipients_lists']:
-            add_or_create(lists, list, [patch])
+            if list in monitored:
+                add_or_create(lists, list, [patch])
 
 
 def dump_lists(lists, filename, tags):
@@ -629,11 +638,13 @@ def evaluate_patches(config, prog, argv):
     # TODO Clean
     patch_data_tmp = list()
     for patch in patch_data:
-        if patch['from_mail'] == 'baolex.ni@intel.com':
+        if patch['from_mail'] == 'b a o l e x . n i@intel.com':
             add_or_create(stats, 'baole')
             continue
         patch_data_tmp.append(patch)
     patch_data = patch_data_tmp
+
+    add_or_create(stats, 'baole')
     print('Baole: ' + str(stats['baole']))
 
     if '--subsystems' in argv:

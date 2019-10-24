@@ -418,17 +418,19 @@ class Mbox:
     def get_messages(self, message_id):
         raws = self.get_raws(message_id)
 
-        return [email.message_from_bytes(raw) for raw in raws]
+        return [email.message_from_bytes(raw) for list, raw in raws]
 
     def get_raws(self, message_id):
         raws = list()
 
         for public_inbox in self.pub_in:
             if message_id in public_inbox:
-                raws += public_inbox[message_id]
+                for raw in public_inbox[message_id]:
+                    raws.append((public_inbox.listname, raw))
 
         if message_id in self.mbox_raw:
-            raws += self.mbox_raw[message_id]
+            for raw in public_inbox[message_id]:
+                raws.append(('raw', raw))
 
         return raws
 

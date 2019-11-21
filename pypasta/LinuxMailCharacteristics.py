@@ -372,7 +372,7 @@ class LinuxMailCharacteristics:
         self.mtrs_has_list_per_subsystem = None
         self.mtrs_has_linux_kernel = None
 
-        message = repo.mbox.get_messages(message_id)[0]
+        message, self.optimal = repo.mbox.get_message(message_id)
         thread = repo.mbox.threads.get_thread(message_id)
         recipients = email_get_recipients(message)
 
@@ -432,7 +432,7 @@ def load_linux_mail_characteristics(repo, message_ids,
     _repo = repo
     p = Pool(processes=int(cpu_count()), maxtasksperchild=1)
 
-    ret = p.map(_load_mail_characteristic, message_ids, chunksize=1000)
+    ret = p.map(_load_mail_characteristic, tqdm(message_ids), chunksize=1000)
     ret = dict(ret)
     print('Done')
     p.close()

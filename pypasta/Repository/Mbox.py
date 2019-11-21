@@ -420,13 +420,67 @@ class Mbox:
 
         return [email.message_from_bytes(raw) for list, raw in raws]
 
+    def get_message(self, message_id, lists=None):
+        """
+        Returns a tuple with one mail with given ID, Boolean whether the requirements are met (see below).
+
+        We noticed that the PubInboxes sometimes have invalid headers.
+        We assume the LKML has correct header.
+
+        This method extracts the message if possible from selected lists or the lkml.
+        If the message is found the tuple returned is: corresponding Mail, True.
+
+        If the mail is not available on these lists all occurrences are checked.
+        If two mails have the same headers we consider them as correct and one of these mails is returned.
+        If `lists` was defined the tuple returned is: corresponding Mail, False.
+        If `lists` was undefined the tuple returned is: corresponding Mail, True.
+
+        If there are no two equal mails
+        If the requirements of the selected lists or double checked headers [1] cannot be satisfied the second element
+        of the tuple returned is: some mail, `False`.
+
+        :param message_id: ID of message
+        :param lists:
+
+        :returns tuple <Message>, <Boolean> (Message requested, Boolean indicating if requirements were met)
+        :returns None if MessageID was not found in PublicInboxes
+        """
+        raws = dict(self.get_raws(message_id))
+
+        if len(raws) is 0:
+            return None
+
+        list_preferences = True
+        if not lists:
+            lists = ['linux-kernel@vger.kernel.org']
+            list_preferences = False
+
+        for l in lists:
+            if l in raws.keys():
+                return email.message_from_bytes(raws[l]), True
+
+        mails = dict()
+        for l, raw in raws.items():
+            mails[l] = email.message_from_bytes(raw)
+
+        if len(mails) is 1:
+            return list(mails.values())[0], False
+
+        k = list(mails.keys())
+        for i in range(0, len(mails)):
+            for j in range(i + 1, len(mails)):
+                if compareMessageHeaders(mails[k[i]], mails[k[j]]):
+                    return mails[k[i]], not list_preferences
+
+        return mails[k[0]], False
+
     def get_raws(self, message_id):
         raws = list()
 
         for public_inbox in self.pub_in:
             if message_id in public_inbox:
                 for raw in public_inbox[message_id]:
-                    raws.append((public_inbox.listname, raw))
+                    raws.append((public_inbox.listaddr, raw))
 
         if message_id in self.mbox_raw:
             for raw in public_inbox[message_id]:
@@ -474,3 +528,13 @@ class Mbox:
             f_invalid = os.path.join(self.d_invalid, '%d' % no)
             with open(f_invalid, 'w') as f:
                 f.write('\n'.join(inv) + '\n')
+
+
+def compareMessageHeaders(a, b):
+    if a.keys() != b.keys():
+        return False
+    for key in a.keys():
+        if a.get(key) != b.get(key):
+            return False
+    return True
+

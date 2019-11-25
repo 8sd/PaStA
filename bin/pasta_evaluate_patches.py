@@ -228,10 +228,11 @@ def dump_characteristics(repo, characteristics, ignored, relevant, filename):
         for message_id in sorted(relevant):
             c = characteristics[message_id]
             kv, rc = get_kv_rc(c.linux_version)
-            mail_from = c.mail_from[1]
 
             row = {'id': message_id,
-                   'from': mail_from,
+                   'from': c.mail_from[0] + ' <' + c.mail_from[1] + '>',
+                   'from_name': c.mail_from[0],
+                   'from_mail': c.mail_from[1],
                    'kv': kv,
                    'rc': rc,
                    'ignored': message_id in ignored,

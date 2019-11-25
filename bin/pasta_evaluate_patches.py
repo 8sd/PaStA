@@ -230,25 +230,15 @@ def dump_characteristics(repo, characteristics, ignored, relevant, filename):
             kv, rc = get_kv_rc(c.linux_version)
             mail_from = c.mail_from[1]
 
-            for list in repo.mbox.get_lists(message_id):
-                list_matches_patch = False
-                for subsys in c.maintainers.values():
-                    lists = subsys[0]
-                    if list in lists:
-                        list_matches_patch = True
-                        break
+            row = {'id': message_id,
+                   'from': mail_from,
+                   'kv': kv,
+                   'rc': rc,
+                   'ignored': message_id in ignored,
+                   'time': c.date,
+            }
 
-                row = {'id': message_id,
-                       'from': mail_from,
-                       'list': list,
-                       'list_matches_patch': list_matches_patch,
-                       'kv': kv,
-                       'rc': rc,
-                       'ignored': message_id in ignored,
-                       'time': c.date,
-                }
-
-                writer.writerow(row)
+            writer.writerow(row)
 
 
 def evaluate_patches(config, prog, argv):

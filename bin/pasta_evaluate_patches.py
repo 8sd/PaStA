@@ -220,7 +220,7 @@ def get_kv_rc(linux_version):
 
 def dump_characteristics(repo, characteristics, ignored, relevant, filename):
     with open(filename, 'w') as csv_file:
-        csv_fields = ['id', 'from', 'list', 'list_matches_patch', 'kv', 'rc',
+        csv_fields = ['id', 'from', 'subsystem', 'kv', 'rc',
                       'ignored', 'time']
         writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
         writer.writeheader()
@@ -230,18 +230,10 @@ def dump_characteristics(repo, characteristics, ignored, relevant, filename):
             kv, rc = get_kv_rc(c.linux_version)
             mail_from = c.mail_from[1]
 
-            for list in repo.mbox.get_lists(message_id):
-                list_matches_patch = False
-                for subsys in c.maintainers.values():
-                    lists = subsys[0]
-                    if list in lists:
-                        list_matches_patch = True
-                        break
-
+            for subsystem in c.maintainers.keys():
                 row = {'id': message_id,
                        'from': mail_from,
-                       'list': list,
-                       'list_matches_patch': list_matches_patch,
+                       'subsystem': subsystem,
                        'kv': kv,
                        'rc': rc,
                        'ignored': message_id in ignored,

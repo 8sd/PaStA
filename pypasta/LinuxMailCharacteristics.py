@@ -28,79 +28,13 @@ _clustering = None
 MAIL_STRIP_TLD_REGEX = re.compile(r'(.*)\..+')
 VALID_EMAIL_REGEX = re.compile(r'.+@.+\..+')
 
-MAILING_LISTS = {'alsa-devel@alsa-project.org', 'amd-gfx@lists.freedesktop.org', 'apparmor@lists.ubuntu.com',
-                 'ath10k@lists.infradead.org', 'autofs@vger.kernel.org', 'b.a.t.m.a.n@lists.open-mesh.org',
-                 'b43-dev@lists.infradead.org', 'blinux-list@redhat.com', 'bpf@vger.kernel.org',
-                 'bridge@lists.linux-foundation.org', 'cake@lists.bufferbloat.net', 'ceph-devel@vger.kernel.org',
-                 'cgroups@vger.kernel.org', 'cip-dev@lists.cip-project.org', 'clang-built-linux@googlegroups.com',
-                 'cluster-devel@redhat.com', 'cocci@systeme.lip6.fr', 'dash@vger.kernel.org',
-                 'dccp@vger.kernel.org', 'devel@acpica.org', 'devel@lists.orangefs.org',
-                 'devicetree@vger.kernel.org', 'dm-devel@redhat.com', 'dmaengine@vger.kernel.org',
-                 'drbd-dev@lists.linbit.com', 'dri-devel@lists.freedesktop.org', 'driverdev-devel@linuxdriverproject.org',
-                 'dwarves@vger.kernel.org', 'ecryptfs@vger.kernel.org', 'etnaviv@lists.freedesktop.org',
-                 'freedreno@lists.freedesktop.org', 'greybus-dev@lists.linaro.org', 'ibm-acpi-devel@lists.sourceforge.net',
-                 'industrypack-devel@lists.sourceforge.net', 'intel-gfx@lists.freedesktop.org', 'intel-gvt-dev@lists.freedesktop.org',
-                 'intel-wired-lan@osuosl.org', 'io-uring@vger.kernel.org', 'iommu@lists.linux-foundation.org',
-                 'isdn4linux@listserv.isdn4linux.de', 'jailhouse-dev@googlegroups.com', 'jfs-discussion@lists.sourceforge.net',
-                 'kasan-dev@googlegroups.com', 'kernel-hardening@lists.openwall.com', 'kernel-janitors@vger.kernel.org',
-                 'kexec@lists.infradead.org', 'keyrings@vger.kernel.org', 'kgdb-bugreport@lists.sourceforge.net',
-                 'ksummit-discuss@lists.linuxfoundation.org', 'kvm-ppc@vger.kernel.org', 'kvm@vger.kernel.org',
-                 'kvmarm@lists.cs.columbia.edu', 'legousb-devel@lists.sourceforge.net', 'libertas-dev@lists.infradead.org',
-                 'linaro-mm-sig@lists.linaro.org', 'linux-acpi@vger.kernel.org', 'linux-afs@lists.infradead.org',
-                 'linux-alpha@vger.kernel.org', 'linux-amlogic@lists.infradead.org', 'linux-api@vger.kernel.org',
-                 'linux-arch@vger.kernel.org', 'linux-arm-kernel@lists.infradead.org', 'linux-arm-msm@vger.kernel.org',
-                 'linux-aspeed@lists.ozlabs.org', 'linux-audit@redhat.com', 'linux-bcache@vger.kernel.org',
-                 'linux-block@vger.kernel.org', 'linux-bluetooth@vger.kernel.org', 'linux-btrfs@vger.kernel.org',
-                 'linux-cachefs@redhat.com', 'linux-can@vger.kernel.org', 'linux-cifs@vger.kernel.org',
-                 'linux-clk@vger.kernel.org', 'linux-crypto@vger.kernel.org', 'linux-csky@vger.kernel.org',
-                 'linux-cxl@vger.kernel.org', 'linux-decnet-user@lists.sourceforge.net', 'linux-doc@vger.kernel.org',
-                 'linux-edac@vger.kernel.org', 'linux-efi@vger.kernel.org', 'linux-embedded@vger.kernel.org',
-                 'linux-erofs@lists.ozlabs.org', 'linux-ext4@vger.kernel.org', 'linux-f2fs-devel@lists.sourceforge.net',
-                 'linux-fbdev@vger.kernel.org', 'linux-fpga@vger.kernel.org', 'linux-fscrypt@vger.kernel.org',
-                 'linux-fsdevel@vger.kernel.org', 'linux-gpio@vger.kernel.org', 'linux-hams@vger.kernel.org',
-                 'linux-hardening@vger.kernel.org', 'linux-hexagon@vger.kernel.org', 'linux-hwmon@vger.kernel.org',
-                 'linux-hyperv@vger.kernel.org', 'linux-i2c@vger.kernel.org', 'linux-i3c@lists.infradead.org',
-                 'linux-ia64@vger.kernel.org', 'linux-ide@vger.kernel.org', 'linux-iio@vger.kernel.org',
-                 'linux-input@vger.kernel.org', 'linux-integrity@vger.kernel.org', 'linux-kbuild@vger.kernel.org',
-                 'linux-kernel@vger.kernel.org', 'linux-kselftest@vger.kernel.org', 'linux-leds@vger.kernel.org',
-                 'linux-m68k@vger.kernel.org', 'linux-man@vger.kernel.org', 'linux-media@vger.kernel.org',
-                 'linux-mediatek@lists.infradead.org', 'linux-mips@vger.kernel.org', 'linux-mm@kvack.org',
-                 'linux-mmc@vger.kernel.org', 'linux-modules@vger.kernel.org', 'linux-mtd@lists.infradead.org',
-                 'linux-next@vger.kernel.org', 'linux-nfc@lists.01.org', 'linux-nfs@vger.kernel.org',
-                 'linux-nilfs@vger.kernel.org', 'linux-ntb@googlegroups.com', 'linux-ntfs-dev@lists.sourceforge.net',
-                 'linux-nvdimm@lists.01.org', 'linux-nvme@lists.infradead.org', 'linux-omap@vger.kernel.org',
-                 'linux-oxnas@groups.io', 'linux-parisc@vger.kernel.org', 'linux-parport@lists.infradead.org',
-                 'linux-pci@vger.kernel.org', 'linux-perf-users@vger.kernel.org', 'linux-pm@vger.kernel.org',
-                 'linux-ppp@vger.kernel.org', 'linux-pwm@vger.kernel.org', 'linux-raid@vger.kernel.org',
-                 'linux-rdma@vger.kernel.org', 'linux-remoteproc@vger.kernel.org', 'linux-renesas-soc@vger.kernel.org',
-                 'linux-riscv@lists.infradead.org', 'linux-rockchip@lists.infradead.org', 'linux-rpi-kernel@lists.infradead.org',
-                 'linux-rtc@vger.kernel.org', 'linux-s390@vger.kernel.org', 'linux-samsung-soc@vger.kernel.org',
-                 'linux-scsi@vger.kernel.org', 'linux-sctp@vger.kernel.org', 'linux-security-module@vger.kernel.org',
-                 'linux-serial@vger.kernel.org', 'linux-sgx@vger.kernel.org', 'linux-sh@vger.kernel.org',
-                 'linux-snps-arc@lists.infradead.org', 'linux-sparse@vger.kernel.org', 'linux-spdx@vger.kernel.org',
-                 'linux-spi@vger.kernel.org', 'linux-stm32@st-md-mailman.stormreply.com', 'linux-tegra@vger.kernel.org',
-                 'linux-tip-commits@vger.kernel.org', 'linux-toolchains@vger.kernel.org', 'linux-trace-devel@vger.kernel.org',
-                 'linux-um@lists.infradead.org', 'linux-unionfs@vger.kernel.org', 'linux-unisoc@lists.infradead.org',
-                 'linux-usb@vger.kernel.org', 'linux-uvc-devel@lists.sourceforge.net', 'linux-watchdog@vger.kernel.org',
-                 'linux-wireless@vger.kernel.org', 'linux-wpan@vger.kernel.org', 'linux-x25@vger.kernel.org',
-                 'linux-xfs@vger.kernel.org', 'linux-xtensa@linux-xtensa.org', 'linux1394-devel@lists.sourceforge.net',
-                 'linuxppc-dev@lists.ozlabs.org', 'linuxppc-users@lists.ozlabs.org', 'live-patching@vger.kernel.org',
-                 'lkml@vger.kernel.org', 'ltp@lists.linux.it', 'lvs-devel@vger.kernel.org',
-                 'mjpeg-users@lists.sourceforge.net', 'mm-commits@vger.kernel.org', 'nbd@other.debian.org',
-                 'netdev@vger.kernel.org', 'netem@lists.linux-foundation.org', 'netfilter-devel@vger.kernel.org',
-                 'nouveau@lists.freedesktop.org', 'open-iscsi@googlegroups.com', 'openbmc@lists.ozlabs.org',
-                 'openipmi-developer@lists.sourceforge.net', 'openrisc@lists.librecores.org', 'openwrt-devel@lists.openwrt.org',
-                 'oprofile-list@lists.sourceforge.net', 'osmocom-net-gprs@lists.osmocom.org', 'osst-users@lists.sourceforge.net',
-                 'phone-devel@vger.kernel.org', 'platform-driver-x86@vger.kernel.org', 'pvrusb2@isely.net',
-                 'qemu-devel@nongnu.org', 'rcu@vger.kernel.org', 'reiserfs-devel@vger.kernel.org',
-                 'samba-technical@lists.samba.org', 'selinux@vger.kernel.org', 'sparclinux@vger.kernel.org',
-                 'speakup@linux-speakup.org', 'spice-devel@lists.freedesktop.org', 'squashfs-devel@lists.sourceforge.net',
-                 'stable@vger.kernel.org', 'target-devel@vger.kernel.org', 'tboot-devel@lists.sourceforge.net',
-                 'tipc-discussion@lists.sourceforge.net', 'tomoyo-users-en@lists.osdn.me', 'tomoyo-users@lists.osdn.me',
-                 'tpmdd-devel@lists.sourceforge.net', 'uboot-stm32@st-md-mailman.stormreply.com', 'usb-storage@lists.one-eyed-alien.net',
-                 'usrp-users@lists.ettus.com', 'util-linux@vger.kernel.org', 'v9fs-developer@lists.sourceforge.net',
-                 'virtualization@lists.linux-foundation.org', 'wcn36xx@lists.infradead.org', 'wireguard@lists.zx2c4.com',
-                 'workflows@vger.kernel.org', 'xdp-newbies@vger.kernel.org', 'xen-devel@lists.xenproject.org'}
+MAILING_LISTS = None
+BOTS = None
+POTENTIAL_BOTS = None
+ROOT_FILES = None
+ROOT_DIRS = None
+BOT_REGEX = None
+PROCESSES = None
 
 def email_get_recipients(message):
     recipients = message.get_all('To', []) + message.get_all('Cc', [])
@@ -172,54 +106,12 @@ class MaintainerMetrics:
         elif c.mtrs_has_maintainers and c.mtrs_has_one_correct_maintainer:
             self.one_list_or_mtr = True
         if not c.mtrs_has_lists and not c.mtrs_has_maintainers:
-            self.one_list_or_mtr = c.mtrs_has_linux_kernel
+            self.one_list_or_mtr = c.mtrs_has_main_list
 
 
 class LinuxMailCharacteristics:
-    BOTS = {'tip-bot2@linutronix.de', 'tipbot@zytor.com',
-            'noreply@ciplatform.org', 'patchwork@emeril.freedesktop.org'}
-    POTENTIAL_BOTS = {'broonie@kernel.org', 'lkp@intel.com'}
-
-    REGEX_COMMIT_UPSTREAM = re.compile('.*commit\s+.+\s+upstream.*', re.DOTALL | re.IGNORECASE)
-    REGEX_COVER = re.compile('\[.*patch.*\s0+/.*\].*', re.IGNORECASE)
-    REGEX_GREG_ADDED = re.compile('patch \".*\" added to .*')
-    ROOT_FILES = ['.clang-format',
-                  '.cocciconfig',
-                  '.get_maintainer.ignore',
-                  '.gitignore',
-                  '.gitattributes',
-                  '.mailmap',
-                  'COPYING',
-                  'CREDITS',
-                  'Kbuild',
-                  'Kconfig',
-                  'README',
-                  'MAINTAINERS',
-                  'Makefile']
-    ROOT_DIRS = ['Documentation/',
-                 'LICENSES/',
-                 'arch/',
-                 'block/',
-                 'certs/',
-                 'crypto/',
-                 'drivers/',
-                 'fs/',
-                 'include/',
-                 'init/',
-                 'ipc/',
-                 'kernel/',
-                 'lib/',
-                 'mm/',
-                 'net/',
-                 'samples/',
-                 'scripts/',
-                 'security/',
-                 'sound/',
-                 'tools/',
-                 'usr/',
-                 'virt/',
-                 # not yet merged subsystems
-                 'kunit/']
+    REGEX_COMMIT_UPSTREAM = re.compile('.*commit\s+.+\s+upstream.*', re.DOTALL | re.IGNORECASE) # Linuxspecific?
+    REGEX_COVER = re.compile('\[.*patch.*\s0+/.*\].*', re.IGNORECASE) # Linuxspecific?
 
     def _is_from_bot(self, message):
         email = self.mail_from[1].lower()
@@ -227,9 +119,9 @@ class LinuxMailCharacteristics:
         uagent = email_get_header_normalised(message, 'user-agent')
         xmailer = email_get_header_normalised(message, 'x-mailer')
         x_pw_hint = email_get_header_normalised(message, 'x-patchwork-hint')
-        potential_bot = email in LinuxMailCharacteristics.POTENTIAL_BOTS
+        potential_bot = email in POTENTIAL_BOTS
 
-        if email in LinuxMailCharacteristics.BOTS:
+        if email in BOTS:
             return True
 
         if potential_bot:
@@ -237,31 +129,14 @@ class LinuxMailCharacteristics:
                 return True
 
             # Mark Brown's bot and lkp
-            if subject.startswith('applied'):
+            if subject.startswith('applied'): # Linuxspecific?
                 return True
 
-        if LinuxMailCharacteristics.REGEX_GREG_ADDED.match(subject):
-            return True
-
-        # AKPM's bot. AKPM uses s-nail for automated mails, and sylpheed for
-        # all other mails. That's how we can easily separate automated mails
-        # from real mails. Secondly, akpm acts as bot if the subject contains [merged]
-        if email == 'akpm@linux-foundation.org':
-            if 's-nail' in uagent or '[merged]' in subject:
-                return True
-            if 'mm-commits@vger.kernel.org' in self.lists:
-                return True
-
-        # syzbot - email format: syzbot-hash@syzkaller.appspotmail.com
-        if 'syzbot' in email and 'syzkaller.appspotmail.com' in email:
-            return True
-
-        if xmailer == 'tip-git-log-daemon':
-            return True
-
-        # Stephen Rothwell's automated emails (TBD: generates false positives)
-        if self.is_next and 'sfr@canb.auug.org.au' in email:
-            return True
+        for md in BOT_REGEX:
+            if md['subject'].match(subject) and md['mail'].match(email) and md['u-agent'].match(uagent) and md['next'].match(str(self.is_next)):
+                for l in self.lists:
+                    if md['list'].match(l):
+                        return True
 
         return False
 
@@ -284,7 +159,7 @@ class LinuxMailCharacteristics:
                 return True
         return False
 
-    def _get_maintainer(self, maintainer, patch):
+    def _get_maintainer(self, maintainer, patch): # Linuxspecific?
         sections = maintainer.get_sections_by_files(patch.diff.affected)
         for section in sections:
             s_lists, s_maintainers, s_reviewers = maintainer.get_maintainers(section)
@@ -298,7 +173,7 @@ class LinuxMailCharacteristics:
         self.mtrs_has_one_correct_maintainer = False
         self.mtrs_has_maintainer_per_section = True
         self.mtrs_has_list_per_section = True
-        self.mtrs_has_linux_kernel = 'linux-kernel@vger.kernel.org' in self.recipients_lists
+        self.mtrs_has_main_list = 'linux-kernel@vger.kernel.org' in self.recipients_lists
 
         recipients = self.recipients_lists | self.recipients_other | \
                      {self.mail_from[1]}
@@ -330,7 +205,7 @@ class LinuxMailCharacteristics:
 
         self.maintainer_metrics = MaintainerMetrics(self)
 
-    def _is_stable_review(self, message, patch):
+    def _is_stable_review(self, message, patch): # Linuxspecific?
         if 'X-Mailer' in message and \
            'LinuxStableQueue' in message['X-Mailer']:
             return True
@@ -363,18 +238,18 @@ class LinuxMailCharacteristics:
         return False
 
     @staticmethod
-    def _patches_linux(patch):
+    def _patches_project(patch):
         for affected in patch.diff.affected:
             if True in map(lambda x: affected.startswith(x),
-                           LinuxMailCharacteristics.ROOT_DIRS) or \
-               affected in LinuxMailCharacteristics.ROOT_FILES:
+                           ROOT_DIRS) or \
+               affected in ROOT_FILES:
                 continue
 
             return False
 
         return True
 
-    def _is_next(self):
+    def _is_next(self): # Linuxspecific?
         if 'linux-next' in self.lists:
             return True
 
@@ -420,7 +295,7 @@ class LinuxMailCharacteristics:
         self.mtrs_has_one_correct_maintainer = None
         self.mtrs_has_maintainer_per_section = None
         self.mtrs_has_list_per_section = None
-        self.mtrs_has_linux_kernel = None
+        self.mtrs_has_main_list = None
         self.maintainer_metrics = None
 
         message = repo.mbox.get_messages(message_id)[0]
@@ -442,7 +317,7 @@ class LinuxMailCharacteristics:
 
         if self.is_patch:
             patch = repo[message_id]
-            self.patches_linux = self._patches_linux(patch)
+            self.patches_linux = self._patches_project(patch)
             self.is_stable_review = self._is_stable_review(message, patch)
 
             # We must only analyse foreign responses of patches if the patch is
@@ -459,8 +334,7 @@ class LinuxMailCharacteristics:
                 if clustering is not None:
                     self.is_upstream = len(clustering.get_upstream(message_id)) != 0
 
-                processes = ['linux-next', 'git pull', 'rfc']
-                self.process_mail = True in [process in self.subject for process in processes]
+                self.process_mail = True in [process in self.subject for process in PROCESSES]
 
                 if maintainers_version is not None:
                     maintainers = maintainers_version[self.linux_version]
@@ -475,6 +349,14 @@ def _load_mail_characteristic(message_id):
 def load_linux_mail_characteristics(config, maintainers_version, clustering,
                                     ids):
     repo = config.repo
+
+    MAILING_LISTS = config.mailinglists
+    BOTS = config.bots
+    POTENTIAL_BOTS = config.potential_bot
+    ROOT_FILES = config.root_files
+    ROOT_DIRS = config.root_dirs
+    BOTS_REGEX = config.bots_regex
+    PROCESSES = config.processes
 
     def _load_characteristics(ret):
         if ret is None:
@@ -501,7 +383,7 @@ def load_linux_mail_characteristics(config, maintainers_version, clustering,
 
         return {**ret, **missing}, True
 
-    log.info('Loading/Updating Linux patch characteristics...')
+    log.info('Loading/Updating patch characteristics...')
     characteristics = load_pkl_and_update(config.f_characteristics_pkl,
                                           _load_characteristics)
 

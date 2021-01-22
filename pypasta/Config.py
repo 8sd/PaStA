@@ -11,6 +11,7 @@ the COPYING file in the top-level directory.
 """
 
 import toml
+import re
 
 from enum import Enum
 from os.path import join, realpath, isfile, isdir, isabs
@@ -199,6 +200,26 @@ class Config:
             self.mbox_mindate = parse_date_ymd(mbox['MINDATE'])
             self.mbox_maxdate = parse_date_ymd(mbox['MAXDATE'])
             self.mbox_time_window = self.mbox_mindate, self.mbox_maxdate
+
+        mail = cfg['characteristics']
+        self.mailinglists = mail['mailinglists']
+        self.bots = mail['bots']
+        self.potential_bot = mail['potential_bot']
+        self.root_files = mail['root_files']
+        self.root_dirs = mail['root_dirs']
+
+        def _build_match_dict (md):
+            d = dict()
+            for k in ['subject', 'mail', 'u-agent', 'list', 'next', 'xmailer']:
+                if k in md:
+                    d[k] = re.compile(md[k])
+                else:
+                    d[k] = re.compile(r'^') # matches anything, used if nothing to match was specified
+            return d
+
+        self.bots_regex = map(_build_match_dict, mail['bots_regex'])
+        self.processes = mail['processes']
+
 
     @property
     def project_root(self):

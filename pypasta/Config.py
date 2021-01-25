@@ -203,22 +203,37 @@ class Config:
 
         mail = cfg['characteristics']
         self.mailinglists = mail['mailinglists']
-        self.bots = mail['bots']
-        self.potential_bot = mail['potential_bot']
         self.root_files = mail['root_files']
         self.root_dirs = mail['root_dirs']
+
+        try:
+            self.bots = mail['bots']
+        except KeyError:
+            self.bots = []
+        
+        try:
+            self.potential_bot = mail['potential_bot']
+        except KeyError:
+            self.potential_bot = []
 
         def _build_match_dict (md):
             d = dict()
             for k in ['subject', 'mail', 'u-agent', 'list', 'next', 'xmailer']:
                 if k in md:
-                    d[k] = re.compile(md[k])
+                    d[k] = re.compile(md[k], re.IGNORECASE)
                 else:
                     d[k] = re.compile(r'^') # matches anything, used if nothing to match was specified
             return d
 
-        self.bots_regex = map(_build_match_dict, mail['bots_regex'])
-        self.processes = mail['processes']
+        try:
+            self.bots_regex = map(_build_match_dict, mail['bots_regex'])
+        except KeyError:
+            self.bots_regex = []
+
+        try:
+            self.processes = mail['processes']
+        except KeyError:
+            self.processes = []
 
 
     @property
